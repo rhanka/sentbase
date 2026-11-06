@@ -141,5 +141,10 @@
       "ListMcpResourcesTool",
       "ReadMcpResourceTool"
     ]
+  },
+  "includeCoAuthoredBy": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }
