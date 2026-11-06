@@ -1,15 +1,10 @@
 SHELL := /bin/bash
 
-# OpenDB workflow targets. Mirrors `sentropic/Makefile` style: every target
-# has a `## comment` consumed by `make help`. Run targets from this worktree:
-#
-#   cd /home/antoinefa/src/opendb/.worktrees/feat-milestone-1 && make <target>
-#
-# All targets are designed to run without requiring per-command permission
-# prompts, by wrapping recurring patterns (cargo / git / npm / pg) under
-# `Bash(make *)` which is allow-listed in `.claude/settings.json`.
+# OpenDB workflow targets (sentropic harness, see rules/MASTER.md). Every target
+# has a `## comment` consumed by `make help`. Run targets from the root of the
+# checkout or of a `tmp/<slug>` worktree: `make <target>`.
 
-WORKTREE := /home/antoinefa/src/opendb/.worktrees/feat-milestone-1
+WORKTREE := $(CURDIR)
 CARGO    := cargo
 GIT      := git -C $(WORKTREE)
 NPM      := npm
@@ -100,26 +95,32 @@ status: ## Show git status + recent log
 	@echo "---"
 	$(GIT) log --oneline -10
 
-.PHONY: ai-grep-check
-ai-grep-check: ## Count commits matching anthropic/claude/🤖 (must stay ≤1 baseline)
-	@$(GIT) log origin/main --grep="anthropic\|claude\|🤖" -i --oneline | wc -l
+.PHONY: hooks
+hooks: ## Git: install the repo hooks (core.hooksPath=.githooks, attribution guard)
+	@$(GIT) config core.hooksPath .githooks
+	@echo "hooks: core.hooksPath=.githooks"
+
+ATTRIBUTION_RANGE ?= HEAD
+.PHONY: check-attribution
+check-attribution: ## Check: refuse AI/agent attribution in commits (ATTRIBUTION_RANGE=origin/main..HEAD)
+	@sh tools/check-attribution.sh $(ATTRIBUTION_RANGE)
+
+.PHONY: scope-check
+scope-check: ## Check: C2 scope of local changes (staged+unstaged) vs BRANCH.md, via host harness
+	@files="$$( { $(GIT) diff --cached --name-only; $(GIT) diff --name-only; } | sort -u | paste -sd, - )"; \
+	harness check scope --profile sentropic --branch-md "$(WORKTREE)/BRANCH.md" --staged-files "$$files"
 
 .PHONY: commit
-commit: ## Stage all + commit with MSG="..." (use ship to also push)
+commit: ## Git: commit the STAGED files with MSG="type: message" (never stages; hook enforced)
 	@if [ -z "$(MSG)" ]; then echo "MSG is required: make commit MSG=\"feat: ...\""; exit 1; fi
-	$(GIT) add -A
-	$(GIT) -c commit.gpgsign=false commit -m "$(MSG)"
+	@if [ "$$($(GIT) config core.hooksPath)" != ".githooks" ]; then echo "Run 'make hooks' first (attribution guard not installed)"; exit 1; fi
+	@if $(GIT) diff --cached --quiet; then echo "Nothing staged: git add <specific-files> first (never add -A)"; exit 1; fi
+	$(GIT) commit -m "$$(printf "%b" "$(MSG)")"
 
 .PHONY: push
-push: ## Push HEAD to origin/main
-	$(GIT) push origin HEAD:main
-
-.PHONY: ship
-ship: ## Stage + commit + push in one shot with MSG="..."
-	@if [ -z "$(MSG)" ]; then echo "MSG is required: make ship MSG=\"feat: ...\""; exit 1; fi
-	$(GIT) add -A
-	$(GIT) -c commit.gpgsign=false commit -m "$(MSG)"
-	$(GIT) push origin HEAD:main
+push: ## Git: push the current branch (never main; main changes go through PRs)
+	@b="$$($(GIT) branch --show-current)"; if [ "$$b" = "main" ]; then echo "Refusing to push main directly"; exit 1; fi; \
+	$(GIT) push -u origin "$$b"
 
 .PHONY: diff
 diff: ## Show uncommitted diff
