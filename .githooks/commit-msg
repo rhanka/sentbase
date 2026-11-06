@@ -1,0 +1,3 @@
+#!/bin/sh
+# Installed by `make hooks` (core.hooksPath=.githooks). Not bypassable in CI: the same check runs there.
+exec "$(git rev-parse --show-toplevel)/tools/check-attribution.sh" --message-file "$1"
