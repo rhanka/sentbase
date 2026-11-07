@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const SECRET = "admin-secret-body";
+const PROXY_SECRET = "proxy-guarded-secret";
 const ROOT = join("tmp", `test-static-${process.pid}`);
 let server: ServerType;
 let port: number;
@@ -40,6 +41,10 @@ beforeAll(async () => {
   writeFileSync(join(ROOT, "public", "%41.txt"), "double-decoded-body");
 
   const app = new Hono();
+  // GHSA-jpvv-r467-5p4w: the guard for /internal/* lives at a reverse proxy, not in the app. The proxy
+  // forwards "/public/..\\internal/secret" because it does not start with "/internal/"; the app must not
+  // treat the backslash as a separator and route it to /internal/secret.
+  app.get("/internal/secret", (c) => c.text(PROXY_SECRET));
   app.use("/static/admin/*", async (c) => c.text("forbidden", 403));
   app.use(
     "/static/*",
@@ -77,6 +82,17 @@ describe("@hono/node-server serveStatic behind a path-based guard", () => {
     // serveStatic would resolve ".../%41.txt" and serve the file literally named "%41.txt".
     const res = await rawGet("/static/public/%2541.txt");
     expect(res.body).not.toContain("double-decoded-body");
+  });
+
+  it.each([
+    "/public/..\\internal/secret",
+    "/public\\..\\internal/secret",
+    "/public/..%5Cinternal/secret",
+    "/public/%2e%2e%5Cinternal/secret",
+    "\\internal/secret",
+  ])("does not route a proxy-allowed path to the proxy-guarded route for %s (GHSA-jpvv-r467-5p4w)", async (path) => {
+    const res = await rawGet(path);
+    expect(res.body).not.toContain(PROXY_SECRET);
   });
 
   it.each([
