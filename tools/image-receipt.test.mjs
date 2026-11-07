@@ -18,6 +18,11 @@ test('should bind a receipt to the built image and successful jobs for one SHA',
   assert.deepEqual(verifyReceipt(JSON.parse(JSON.stringify(result)), receipt()), result);
 });
 
+test('should accept the manifest image ID returned by Docker containerd stores', () => {
+  const result = createReceipt(context, checks(), { 'containerimage.digest': imageDigest }, imageDigest);
+  assert.equal(result.imageId, imageDigest);
+});
+
 test('should reject missing, failed, skipped, cancelled and stale checks', () => {
   for (const job of jobs) {
     for (const result of ['failure', 'skipped', 'cancelled', undefined]) {
@@ -39,7 +44,7 @@ test('should reject missing identity, checkout mismatch and image substitution',
   }
   assert.throws(() => createReceipt({ ...context, sourceSha: 'd'.repeat(40) }, checks(), metadata, imageId), /identity/);
   assert.throws(() => createReceipt(context, checks(), {}, imageId), /digest/);
-  assert.throws(() => createReceipt(context, checks(), metadata, imageDigest), /digest/);
+  assert.throws(() => createReceipt(context, checks(), metadata, `sha256:${'d'.repeat(64)}`), /digest/);
 });
 
 test('should reject receipt reuse across runs, attempts, source commits and images', () => {

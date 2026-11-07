@@ -58,6 +58,11 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   Owner: engine maintainer; bounded fix: these warnings; acceptance: `make clippy` passes.
   Other gates pass with `make -k check ENV=test-harness-adopt` (331 Rust + 38 Vitest tests).
 - Toolchain licenses: official Node (MIT), Rust (MIT OR Apache-2.0); no new package dependency.
+- Image validation: `make image ENV=test-harness-adopt` builds `Dockerfile.alpine` and runs its immutable
+  image ID with `--help`. Receipt CLI write/verify passed against that build using the explicit local
+  fixture `make -f Makefile -f tmp/receipt-fixture.mk image-receipt verify-image-receipt ENV=test-harness-adopt`;
+  its successful job results are simulated, not CI evidence. Repeating verification with
+  `GITHUB_RUN_ATTEMPT=2` correctly fails with `Image receipt does not match this image, SHA, run and attempt`.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
@@ -77,6 +82,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [ ] Lot gate: `make check` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
   - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
+  - [x] Docker-only musl build, Alpine image smoke test, and Make entry points for receipt write/verify.
   - [ ] Workflow: attribution guard on the PR range, no-python, lint, tests; tested-artifact receipt for the image.
   - [ ] Lot gate: CI green on the PR.
 - [ ] **Lot 4 — Track (BR01-EX4)**
