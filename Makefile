@@ -215,15 +215,19 @@ poc-seed: ## Sprint 18.B: migrations + seed minimal Drizzle (workspaces/orgs/fol
 poc-http: ## Sprint 18.C: HTTP route /api/folders bout-en-bout sur opendb-node
 	cd $(WORKTREE) && $(NPM) run poc:sentropic:http
 
-IMAGE_TAG ?= opendb-node:poc-local
+IMAGE_TAG ?= opendb-node:$(ENV)
+.PHONY: check-image-inputs
+check-image-inputs: toolchain ## Check runtime and toolchain image pins without live package resolution
+	$(TOOLCHAIN_RUN) node tools/check-image-inputs.mjs
 .PHONY: image poc-image image-receipt verify-image-receipt
 image: poc-image ## Build and smoke-test Dockerfile.alpine with a static musl binary
-poc-image: poc-musl ## Build the Alpine runtime using only its Dockerfile and binary as context
+poc-image: poc-musl check-image-inputs ## Build the Alpine runtime using only its Dockerfile and binary as context
 	@mkdir -p "$(WORKTREE)/tmp/ci"
-	@set -o pipefail; tar -cf - Dockerfile.alpine target/x86_64-unknown-linux-musl/release/opendb-node | \
-	  docker buildx build --load -t $(IMAGE_TAG) --metadata-file tmp/ci/image-metadata.json -f Dockerfile.alpine -
-	@docker image inspect $(IMAGE_TAG) --format '{{.Id}}' > tmp/ci/image-id
-	docker run --rm --user "$$(id -u):$$(id -g)" "$$(cat tmp/ci/image-id)" --help
+	@set -o pipefail; tar -C "$(WORKTREE)" --sort=name --owner=0 --group=0 --numeric-owner \
+	  --mtime='UTC 1970-01-01' -cf - Dockerfile.alpine target/x86_64-unknown-linux-musl/release/opendb-node | \
+	  docker buildx build --load -t $(IMAGE_TAG) --metadata-file "$(WORKTREE)/tmp/ci/image-metadata.json" -f Dockerfile.alpine -
+	@docker image inspect $(IMAGE_TAG) --format '{{.Id}}' > "$(WORKTREE)/tmp/ci/image-id"
+	docker run --rm "$$(cat "$(WORKTREE)/tmp/ci/image-id")" --help
 
 RECEIPT_RUN = $(DOCKER_RUN) -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_WORKFLOW \
 	-e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CI_NEEDS -e SOURCE_SHA="$$($(GIT) rev-parse HEAD)" \
