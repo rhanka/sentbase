@@ -229,6 +229,10 @@ poc-image: poc-musl check-image-inputs ## Build the Alpine runtime using only it
 	@docker image inspect $(IMAGE_TAG) --format '{{.Id}}' > "$(WORKTREE)/tmp/ci/image-id"
 	docker run --rm "$$(cat "$(WORKTREE)/tmp/ci/image-id")" --help
 
+.PHONY: image-integration
+image-integration: image npm-ci ## Test the exact image ID with SQL write/read and restart recovery
+	@TOOLCHAIN_IMAGE=$(TOOLCHAIN_IMAGE) SOURCE_SHA="$$($(GIT) rev-parse HEAD)" bash tools/image-integration.sh
+
 RECEIPT_RUN = $(DOCKER_RUN) -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_WORKFLOW \
 	-e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CI_NEEDS -e SOURCE_SHA="$$($(GIT) rev-parse HEAD)" \
 	$(TOOLCHAIN_IMAGE) node tools/image-receipt.mjs
