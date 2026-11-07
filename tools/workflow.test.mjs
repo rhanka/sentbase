@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -14,7 +14,7 @@ for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'MAKEFLAGS', 'M
 const git = (...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trimEnd();
 mkdirSync(join(cwd, 'tools'));
 mkdirSync(join(cwd, '.githooks'));
-for (const path of ['Makefile', 'tools/commit.sh', 'tools/check-attribution.sh', '.githooks/commit-msg']) {
+for (const path of ['Makefile', 'tools/Dockerfile.pins', 'tools/commit.sh', 'tools/check-attribution.sh', '.githooks/commit-msg']) {
   copyFileSync(resolve(path), join(cwd, path));
 }
 git('init', '-q');
@@ -86,4 +86,39 @@ test('should refuse detached pushes before invoking git push', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stdout, /Refusing detached HEAD or main/);
   assert.doesNotMatch(result.stderr, /unexpected/);
+});
+
+test('should execute base policy despite a candidate no-op checker and Makefile', () => {
+  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+  const script = workflow.split('        run: |\n')[1].split('\n  no-python:')[0]
+    .split('\n').map(line => line.replace(/^ {10}/, '')).join('\n');
+  for (const bootstrap of [false, true]) {
+    const dir = join(cwd, `ci-${bootstrap}`);
+    mkdirSync(join(dir, 'tools'), { recursive: true });
+    const g = (...args) => execFileSync('git', args, { cwd: dir, env, encoding: 'utf8' }).trim();
+    g('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'Makefile'), 'check-attribution:\n\t@exit 0\n');
+    if (!bootstrap) copyFileSync(resolve('tools/check-attribution.sh'), join(dir, 'tools/check-attribution.sh'));
+    g('add', 'Makefile', 'tools');
+    g('-c', 'commit.gpgsign=false', 'commit', '-qm', 'test: baseline policy');
+    g('update-ref', 'refs/remotes/origin/main', g('rev-parse', 'HEAD'));
+    if (bootstrap) copyFileSync(resolve('tools/check-attribution.sh'), join(dir, 'tools/check-attribution.sh'));
+    else writeFileSync(join(dir, 'tools/check-attribution.sh'), '#!/bin/sh\nexit 0\n');
+    g('add', 'tools/check-attribution.sh');
+    g('-c', 'commit.gpgsign=false', 'commit', '-qm', bootstrap ? 'test: bootstrap policy' : 'Generated with ChatGPT');
+    const output = join(dir, 'output');
+    const result = spawnSync('bash', ['-c', script], { cwd: dir, env: { ...env,
+      BASE_REF: 'main', GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: output,
+      PR_TITLE: 'fix: validate a feature', PR_BODY: '' }, encoding: 'utf8' });
+    if (bootstrap) {
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /BOOTSTRAP: base has no attribution checker/);
+      assert.match(readFileSync(output, 'utf8'), new RegExp(`sha=${g('rev-parse', 'HEAD')}`));
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout, /Attribution policy: origin\/main/);
+      assert.match(result.stderr, /attribution in commit/);
+      assert.equal(existsSync(output), false);
+    }
+  }
 });
