@@ -100,6 +100,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Attribution regression coverage | P1 | fixed | `make test-attribution`: marker vocabulary, human discussion, both identities, config overrides, commit objects, read/Git/grep failures. |
 | Argon P1-3 | P1 | fixed | Raw MSG exported; file-based commit, single-line validation, signing disabled for headless commits; quotes/dollars/backticks/backslashes tested. SQL/PATTERN transport corrected with operational targets. |
 | Argon P0-2 | P0 | fixed | Settings allow Make, selective staging and read-only Git; direct toolchains/Python/commit/push/filter-branch and stale paths removed. Attribution-off keys retained. |
+| Astra 8; Argon P0-3 | P2 / P0 | fixed | EX6: MIT in workspace and npm manifests; `make check-license` validates all six packages through containerized Cargo metadata. No dependency/lockfile edit. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**

@@ -126,6 +126,12 @@ test-image-receipt: toolchain ## Test image receipts against failed checks, stal
 .PHONY: check
 check: lint test check-ts check-no-python check-manifests vitest test-image-receipt check-ci ## Full check pipeline
 
+.PHONY: check-license
+check-license: toolchain ## Check every workspace package and the npm manifest declare MIT
+	@mkdir -p tmp/ci
+	@$(TOOLCHAIN_RUN) cargo metadata --no-deps --locked --format-version 1 > tmp/ci/license-metadata.json
+	@$(TOOLCHAIN_RUN) node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("tmp/ci/license-metadata.json")); if (!m.packages.length || m.packages.some(p => p.license !== "MIT") || require("./package.json").license !== "MIT") process.exit(1); console.log("license: MIT (" + m.packages.length + " Cargo packages and npm)");'
+
 # ----- Git workflow ---------------------------------------------------------
 
 .PHONY: status
