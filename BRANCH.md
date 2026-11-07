@@ -7,8 +7,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 ## Scope / Guardrails
 - Scope limited to governance files, the attribution guard, Makefile workflow targets and CI bootstrap.
 - No engine behaviour change: `crates/**` only for lint-only fixes under BR01-EX5. Make-only; worktree `tmp/chore-harness-adopt`.
-- Built on `purge/main-rewritten` (6 AI-authored commits re-authored, trees identical); rebased onto `main`
-  if the owner does not approve the force-push.
+- Built on rewritten `main` (`b1a8f1f`); six historical commits were re-authored with identical trees.
 - Zero Python. All new text in English.
 
 ## Branch Scope Boundaries (MANDATORY)
@@ -20,22 +19,32 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `rules/**`
   - `plan/**`
   - `tools/check-attribution.sh`
+  - `tools/check-attribution.test.mjs`
+  - `tools/scope-check.mjs`
+  - `tools/workflow.test.mjs`
+  - `tools/commit.sh`
+  - `tools/image-integration.sh`
+  - `tools/check-image-inputs.mjs`
+  - `tools/no-python.ts`
   - `tools/image-receipt.mjs`
   - `tools/image-receipt.test.mjs`
   - `.github/dependabot.yml`
+  - `.github/CODEOWNERS`
   - `.githooks/**`
   - `.claude/settings.json`
-  - `.gitignore`
   - `README.md`
 - **Forbidden Paths (must not change in this branch)**:
-  - `Cargo.toml`
   - `Cargo.lock`
+  - `package-lock.json`
 - **Conditional Paths (allowed only with explicit exception when not already listed in Allowed Paths)**:
   - `Makefile` (BR01-EX1)
   - `LICENSE` (BR01-EX2)
   - `.github/workflows/**` (BR01-EX3)
   - `.track/**` (BR01-EX4)
   - `crates/**/*.rs` (BR01-EX5, lint-only)
+  - `Cargo.toml` (BR01-EX6, license metadata only)
+  - `package.json` (BR01-EX6, license metadata only)
+  - `Dockerfile.alpine` (BR01-EX6, pinned runtime inputs)
 - **Exception process**:
   - Declare exception ID `BRxx-EXn` in `## Feedback Loop` before touching any conditional/forbidden path.
 
@@ -45,14 +54,16 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   `scope-check`; run quality targets in digest-pinned Rust/Node images with worktree-local caches,
   and build the musl binary/image plus verify its receipt through Make. Impact: workflow targets only.
   Rollback: revert the commit.
-- `BR01-EX2` LICENSE: add MIT (owner direction 2026-11-06: full MIT, never any sold license). Impact: the repo
-  had no license. Rollback: none intended (license grants are not revocable once published).
+- `BR01-EX2` LICENSE: add MIT (owner direction 2026-11-06: full MIT). The repository lacked a LICENSE file;
+  Cargo metadata previously declared Apache-2.0. Rollback: none intended for published license grants.
 - `BR01-EX3` CI: add a first GitHub Actions workflow (attribution guard, no-python, lint, tests, TS,
   image receipt) and weekly Dependabot updates. Impact: validation only, no publication. Rollback: revert.
 - `BR01-EX4` Track: `track init` for opendb realization state. Rollback: revert.
 - `BR01-EX5` Engine lint debt: `make clippy` (-D warnings) fails on `main` (~22 errors in wal.rs, raft.rs,
   recovery.rs, executor.rs, parser.rs). Fix them without behaviour change so CI can be green. Impact: engine
   source, lint-only; all Rust tests must still pass. Rollback: revert the commits.
+- `BR01-EX6` Owner-requested review fixes: align Cargo/npm license metadata with MIT and pin the Alpine
+  runtime inputs. No dependency or lockfile change, no engine behaviour change. Rollback: revert.
 - `attention` SQL parser: `parse_column_type_tokens` consumes only `CHARACTER`, so
   `CREATE TABLE t (label CHARACTER VARYING)` fails with `unsupported column constraint on label`.
   The shadowed two-token arm was unreachable and has been removed without changing this behaviour.
@@ -75,15 +86,22 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   `GITHUB_RUN_ATTEMPT=2` correctly fails with `Image receipt does not match this image, SHA, run and attempt`.
 - `attention` Lot 3: remote CI is unverified because pushing/opening a PR is forbidden in this task.
   Owner: conductor; acceptance: all CI jobs pass on the PR after the engine Clippy warnings are resolved.
-- `attention` Review: peer selection is pending exact author model/effort metadata (the handoff only
-  names Sol); the review skill refuses unknown author metadata. Owner: conductor; acceptance: two eligible
-  completed peer reviews. Local dossier: `tmp/lot-2-3-review.md`; no consensus verdict is claimed.
+- Review inputs: two independent completed reviews, `tmp/packets/review-pr1-astra.md.out` and
+  `tmp/packets/review-pr1-argon.md.out` (relative to the root checkout); both require changes.
+
+## Review outcomes
+
+Finding IDs below use the reviewer's numbering; outcomes are recorded as each correction is verified.
+
+| Finding | Priority | Outcome | Evidence / remaining acceptance |
+| --- | --- | --- | --- |
+| Argon P1-5 | P1 | fixed | Scope reflects touched files; EX6 declared; Track remains unchecked. ENV isolation and final gate evidence follow below. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
   - [x] Backup bundle of all refs before purge, ref `backup/pre-purge-main`.
   - [x] `purge/main-rewritten`: 6 commits `claude@anthropic.com` re-authored; per-commit tree/message/date equality verified.
-  - [ ] Owner GO for force-push of `main` (and closing the 3 dependabot branches based on the old tip).
+  - [x] Current `main` is the rewritten base `b1a8f1f`; no push is authorized in this correction task.
 - [ ] **Lot 1 — Governance and attribution guard**
   - [x] `AGENTS.md`, `CLAUDE.md`, `rules/MASTER.md`, `plan/BRANCH_TEMPLATE.md`, `harness.profile.json`.
   - [x] `tools/check-attribution.sh` + `.githooks/commit-msg`; tested: rejects a `Co-Authored-By` AI trailer and AI identities, passes the rewritten history.

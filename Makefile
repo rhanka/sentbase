@@ -5,6 +5,7 @@ SHELL := /bin/bash
 # checkout or of a `tmp/<slug>` worktree: `make <target>`.
 
 WORKTREE := $(CURDIR)
+ENV ?= test-harness-adopt
 CARGO    := cargo
 GIT      := git -C $(WORKTREE)
 NPM      := npm
@@ -147,10 +148,14 @@ check-attribution: ## Check: refuse AI/agent attribution in commits (ATTRIBUTION
 ci-source: ## Check: record the checked-out SHA after a successful CI gate
 	@printf 'sha=%s\n' "$$($(GIT) rev-parse HEAD)" >> "$${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
-.PHONY: scope-check
-scope-check: ## Check: C2 scope of local changes (staged+unstaged) vs BRANCH.md, via host harness
-	@files="$$( { $(GIT) diff --cached --name-only; $(GIT) diff --name-only; } | sort -u | paste -sd, - )"; \
-	harness check scope --profile sentropic --branch-md "$(WORKTREE)/BRANCH.md" --staged-files "$$files"
+.PHONY: harness-tool scope-check
+harness-tool: toolchain ## Install the exact harness CLI/API in the isolated tooling cache
+	@$(TOOLCHAIN_RUN) sh -ec 'test -f tmp/toolchain/harness/node_modules/@sentropic/harness/dist/index.js || npm install --prefix tmp/toolchain/harness --no-package-lock --ignore-scripts --no-save @sentropic/harness@0.4.0'
+
+export SCOPE_RANGE ?= main...HEAD
+scope-check: harness-tool ## Check: branch range plus staged/unstaged/untracked against the project profile
+	$(DOCKER_RUN) -v "$$($(GIT) rev-parse --path-format=absolute --git-common-dir):$$($(GIT) rev-parse --path-format=absolute --git-common-dir):ro" \
+	  -e CI -e SCOPE_RANGE $(TOOLCHAIN_IMAGE) node tools/scope-check.mjs
 
 .PHONY: commit
 commit: ## Git: commit the STAGED files with MSG="type: message" (never stages; hook enforced)
