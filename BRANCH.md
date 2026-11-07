@@ -45,6 +45,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `Cargo.toml` (BR01-EX6, license metadata only)
   - `package.json` (BR01-EX6, license metadata only)
   - `Dockerfile.alpine` (BR01-EX6, pinned runtime inputs)
+  - `tools/Dockerfile.pins` (BR01-EX1, existing toolchain digests for Dependabot)
 - **Exception process**:
   - Declare exception ID `BRxx-EXn` in `## Feedback Loop` before touching any conditional/forbidden path.
 
@@ -52,7 +53,8 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 - `BR01-EX1` Makefile: replace hardcoded worktree path by `$(CURDIR)`; replace `commit`/`ship` (which ran
   `git add -A` and pushed to main) by hook-enforced `commit`, branch-only `push`, `hooks`, `check-attribution`,
   `scope-check`; run quality targets in digest-pinned Rust/Node images with worktree-local caches,
-  and build the musl binary/image plus verify its receipt through Make. Impact: workflow targets only.
+  and build the musl binary/image plus verify its receipt through Make. Move existing toolchain image
+  references to `tools/Dockerfile.pins` so Dependabot can maintain them. Impact: workflow targets only.
   Rollback: revert the commit.
 - `BR01-EX2` LICENSE: add MIT (owner direction 2026-11-06: full MIT). The repository lacked a LICENSE file;
   Cargo metadata previously declared Apache-2.0. Rollback: none intended for published license grants.
@@ -110,6 +112,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 7 (receipt); Argon P1-2 | P2 / P1 | fixed | Receipt requires successful integration at exact source/image digests; key-order-safe structural comparison; expected evidence always validated; verifier inspects the actual loaded Docker tag. |
 | Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets, as authorized by owner. ENV selects runtime tag, container and data directory. |
 | Argon P2-1 | P2 | fixed | No-Python walker explicitly ignores tmp and toolchain caches. |
+| Argon P2-3 (Docker updates) | P2 | fixed | Dependabot scans /deploy/docker and /tools; toolchain references moved without digest changes to a single Dockerfile.pins source consumed by Make. |
 
 ## Tracked adoption debt
 

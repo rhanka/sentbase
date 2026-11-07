@@ -9,9 +9,9 @@ if (/\bapk\s+add\b/.test(dockerfile)
   || !/ca-certificates-bundle-\d{8}-r\d+/.test(dockerfile)) {
   throw Error('Use an explicitly versioned certificate bundle from the pinned base; no live APK resolution');
 }
-const makefile = readFileSync('Makefile', 'utf8');
-for (const image of ['RUST', 'NODE', 'MUSL', 'ACTIONLINT']) {
-  if (!new RegExp(`^${image}_IMAGE := .+@sha256:[a-f0-9]{64}$`, 'm').test(makefile)) {
+const pins = readFileSync('tools/Dockerfile.pins', 'utf8');
+for (const image of ['rust', 'node', 'musl', 'actionlint']) {
+  if (!new RegExp(`^FROM .+@sha256:[a-f0-9]{64} AS ${image}$`, 'm').test(pins)) {
     throw Error(`${image} toolchain must be pinned by digest`);
   }
 }
