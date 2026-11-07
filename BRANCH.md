@@ -107,6 +107,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 4 (local push); Argon P2-2 (push) | P1 / P2 | fixed | Push requires an outgoing-range attribution scan, rejects detached HEAD/main, uses explicit branch refspec. No push executed. |
 | Astra 6; Argon P1-4 | P2 / P1 | fixed | Verified Alpine digest; exact preinstalled certificate bundle 20260413-r0 avoids mutable repositories entirely. Normalized tar ownership/time; anchored paths; `check-image-inputs` enforces pins. |
 | Astra 7 (image execution) | P2 | fixed | `make image-integration` starts the exact image ID as opendb, writes/reads SQL, restarts with the same volume, checks recovered data and emits exercised digest. Gate execution recorded in final validation. |
+| Astra 7 (receipt); Argon P1-2 | P2 / P1 | fixed | Receipt requires successful integration at exact source/image digests; key-order-safe structural comparison; expected evidence always validated. Loaded-image inspection wired in the following workflow correction. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
