@@ -1,171 +1,65 @@
-# Chore: adopt the sentropic harness in sentbase (opendb import)
+# Fix: clear npm audit, bump @hono/node-server and hono past path-handling advisories
 
 ## Objective
-Bring sentbase (which absorbs the opendb repository and history) under the sentropic harness (rules, scope control, make-only, commit discipline, Track, CI) and make
-AI/agent attribution in commits mechanically impossible, after the owner-approved history purge.
+Replace the vulnerable `@hono/node-server` 2.0.2 with 2.1.6 and `hono` 4.12.25 with 4.13.17, clear every
+`npm audit` finding of the locked graph (dev toolchain included), keep a single runtime copy of each, and add a
+regression test that fails on 2.0.2 and passes on 2.1.6.
 
 ## Scope / Guardrails
-- Scope limited to governance files, the attribution guard, Makefile workflow targets and CI bootstrap.
-- No engine behaviour change: `crates/**` only for lint-only fixes under BR01-EX5. Make-only; worktree `tmp/chore-harness-adopt`.
-- Built on rewritten `main` (`b1a8f1f`); six historical commits were re-authored with identical trees.
-- Zero Python. All new text in English.
+- Stacked on `chore/harness-adopt` (PR #1): the CI and make toolchain this branch relies on land there first.
+- Only the Node dependency graph, one regression test and two npm make targets change. No engine change.
+- Make-only; worktree `tmp/fix-hono-node-server-ghsa`. Zero Python. English.
+- Request origin: s-conductor security notice, 2026-11-07 (references: sentropic PR #938, immo PR #1016).
 
 ## Branch Scope Boundaries (MANDATORY)
 - **Allowed Paths (implementation scope)**:
-  - `AGENTS.md`
-  - `CLAUDE.md`
   - `BRANCH.md`
-  - `harness.profile.json`
-  - `rules/**`
-  - `plan/**`
-  - `tools/check-attribution.sh`
-  - `tools/check-attribution.test.mjs`
-  - `tools/scope-check.mjs`
-  - `tools/workflow.test.mjs`
-  - `tools/commit.sh`
-  - `tools/image-integration.sh`
-  - `tools/check-image-inputs.mjs`
-  - `tools/no-python.ts`
-  - `tools/image-receipt.mjs`
-  - `tools/image-receipt.test.mjs`
-  - `.github/dependabot.yml`
-  - `.github/CODEOWNERS`
-  - `.githooks/**`
-  - `.claude/settings.json`
-  - `README.md`
-- **Forbidden Paths (must not change in this branch)**:
-  - `Cargo.lock`
+  - `package.json`
   - `package-lock.json`
+  - `tests/security/**`
+- **Forbidden Paths (must not change in this branch)**:
+  - `crates/**`
+  - `Cargo.toml`
+  - `Cargo.lock`
+  - `.github/workflows/**`
 - **Conditional Paths (allowed only with explicit exception when not already listed in Allowed Paths)**:
-  - `Makefile` (BR01-EX1)
-  - `LICENSE` (BR01-EX2)
-  - `.github/workflows/**` (BR01-EX3)
-  - `.track/**` (BR01-EX4)
-  - `crates/**/*.rs` (BR01-EX5, lint-only)
-  - `Cargo.toml` (BR01-EX6, license metadata only)
-  - `package.json` (BR01-EX6, license metadata only)
-  - `Dockerfile.alpine` (BR01-EX6, pinned runtime inputs)
-  - `tools/Dockerfile.pins` (BR01-EX1, existing toolchain digests for Dependabot)
+  - `Makefile` (BR02-EX1)
 - **Exception process**:
   - Declare exception ID `BRxx-EXn` in `## Feedback Loop` before touching any conditional/forbidden path.
 
 ## Feedback Loop
-- `BR01-EX1` Makefile: replace hardcoded worktree path by `$(CURDIR)`; replace `commit`/`ship` (which ran
-  `git add -A` and pushed to main) by hook-enforced `commit`, branch-only `push`, `hooks`, `check-attribution`,
-  `scope-check`; run quality targets in digest-pinned Rust/Node images with worktree-local caches,
-  and build the musl binary/image plus verify its receipt through Make. Move existing toolchain image
-  references to `tools/Dockerfile.pins` so Dependabot can maintain them. Impact: workflow targets only.
-  Rollback: revert the commit.
-- `BR01-EX2` LICENSE: add MIT (owner direction 2026-11-06: full MIT). The repository lacked a LICENSE file;
-  Cargo metadata previously declared Apache-2.0. Rollback: none intended for published license grants.
-- `BR01-EX3` CI: add a first GitHub Actions workflow (attribution guard, no-python, lint, tests, TS,
-  image receipt) and weekly Dependabot updates. Impact: validation only, no publication. Rollback: revert.
-- `BR01-EX4` Track: `track init` for opendb realization state. Rollback: revert.
-- `BR01-EX5` Engine lint debt: `make clippy` (-D warnings) fails on `main` (~22 errors in wal.rs, raft.rs,
-  recovery.rs, executor.rs, parser.rs). Fix them without behaviour change so CI can be green. Impact: engine
-  source, lint-only; all Rust tests must still pass. Rollback: revert the commits.
-- `BR01-EX6` Owner-requested review fixes: align Cargo/npm license metadata with MIT and pin the Alpine
-  runtime inputs. No dependency or lockfile change, no engine behaviour change. Rollback: revert.
-- `attention` SQL parser: `parse_column_type_tokens` consumes only `CHARACTER`, so
-  `CREATE TABLE t (label CHARACTER VARYING)` fails with `unsupported column constraint on label`.
-  The shadowed two-token arm was unreachable and has been removed without changing this behaviour.
-  Owner: SQL maintainer; bounded fix: recognize and consume `CHARACTER VARYING` before the generic text
-  arm; acceptance: that CREATE TABLE succeeds with a Text column and bare CHARACTER still works;
-  verification: focused parser tests plus `make test-sql ENV=test-harness-adopt`.
-- Lot 2 outcome (BR01-EX5): engine Clippy debt is resolved without behaviour changes.
-  `make clippy ENV=test-harness-adopt` passes with `--workspace --all-targets --locked -- -D warnings`.
-  `make test ENV=test-harness-adopt`, `make fmt-check ENV=test-harness-adopt` and
-  `make -k check ENV=test-harness-adopt` all exit 0 (330 Rust, 38 Vitest, 5 image-receipt tests).
-  Rust previously counted 331 tests because `debug_comments_table` had duplicate `#[test]` attributes.
-  Raft helpers box their large errors; no `allow(clippy::result_large_err)` is used.
-  The only new allow is `clippy::double_must_use` on `RecoveryStatusFetcher::fetch`, because
-  async_trait generates a redundant `#[must_use]` attribute on its already-must-use future.
-- Toolchain licenses: official Node (MIT), Rust (MIT OR Apache-2.0), actionlint (MIT); no new package dependency.
-- Image validation: `make image ENV=test-harness-adopt` builds `Dockerfile.alpine` and runs its immutable
-  image ID with `--help`. Receipt CLI write/verify passed against that build using the explicit local
-  fixture `make -f Makefile -f tmp/receipt-fixture.mk image-receipt verify-image-receipt ENV=test-harness-adopt`;
-  its successful job results are simulated, not CI evidence. Repeating verification with
-  `GITHUB_RUN_ATTEMPT=2` correctly fails with `Image receipt does not match this image, SHA, run and attempt`.
-- `attention` Lot 3: remote CI is unverified because pushing/opening a PR is forbidden in this task.
-  Owner: conductor; acceptance: all CI jobs pass on the PR after the engine Clippy warnings are resolved.
-- Review inputs: two independent completed reviews, `tmp/packets/review-pr1-astra.md.out` and
-  `tmp/packets/review-pr1-argon.md.out` (relative to the root checkout); both require changes.
-
-## Review outcomes
-
-Finding IDs below use the reviewer's numbering; outcomes are recorded as each correction is verified.
-
-| Finding | Priority | Outcome | Evidence / remaining acceptance |
-| --- | --- | --- | --- |
-| Argon P1-5 | P1 | fixed | Scope reflects touched files; EX6 declared; Track remains unchecked. ENV isolation and final gate evidence follow below. |
-| Astra 1, 2, 3; Argon P0-1 (local policy) | P1 / P0 | fixed | Shared identifiers, effective hook identities, checked Git/message reads; regression suite follows. All bots, including dependabot, require human re-authorship; no unverifiable dependency-only exception. |
-| Attribution regression coverage | P1 | fixed | `make test-attribution`: marker vocabulary, human discussion, both identities, config overrides, commit objects, read/Git/grep failures. |
-| Argon P1-3 | P1 | fixed | Raw MSG exported; file-based commit, single-line validation, signing disabled for headless commits; quotes/dollars/backticks/backslashes tested. SQL/PATTERN transport corrected with operational targets. |
-| Argon P0-2 | P0 | fixed | Settings allow Make, selective staging and read-only Git; direct toolchains/Python/commit/push/filter-branch and stale paths removed. Attribution-off keys retained. |
-| Astra 8; Argon P0-3 | P2 / P0 | fixed | EX6: MIT in workspace and npm manifests; `make check-license` validates all six packages through containerized Cargo metadata. No dependency/lockfile edit. |
-| Astra 5 (implementation); Argon P0-1 (CI) | P1 / P0 | fixed | Base-revision checker reads commit objects; explicit bootstrap fallback; all-branch push and merge_group triggers; PR metadata checked; CODEOWNERS added. Independent required-workflow enforcement remains an owner acceptance item below. |
-| Argon P2-3 (credentials) | P2 | fixed | Every checkout sets `persist-credentials: false`. |
-| Argon P1-1; Astra scope note | P1 | fixed | Containerized harness 0.4.0 API consumes project profile; staged/unstaged/untracked and branch range checked in commit/check/CI. Tests reject absent harness, invalid range and clean-but-out-of-scope branch commits. |
-| Astra 4 (local push); Argon P2-2 (push) | P1 / P2 | fixed | Push requires an outgoing-range attribution scan, rejects detached HEAD/main, uses explicit branch refspec. No push executed. |
-| Astra 6; Argon P1-4 | P2 / P1 | fixed | Verified Alpine digest; exact preinstalled certificate bundle 20260413-r0 avoids mutable repositories entirely. Normalized tar ownership/time; anchored paths; `check-image-inputs` enforces pins. |
-| Astra 7 (image execution) | P2 | fixed | `make image-integration` starts the exact image ID as opendb, writes/reads SQL, restarts with the same volume, checks recovered data and emits exercised digest. Gate execution recorded in final validation. |
-| Astra 7 (receipt); Argon P1-2 | P2 / P1 | fixed | Receipt requires successful integration at exact source/image digests; key-order-safe structural comparison; expected evidence always validated; verifier inspects the actual loaded Docker tag. |
-| Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets (deferral decided by the conductor, not by the owner). ENV selects runtime tag, container and data directory. |
-| Argon P2-1 | P2 | fixed | No-Python walker explicitly ignores tmp and toolchain caches. |
-| Argon P2-3 (Docker updates) | P2 | fixed | Dependabot scans /deploy/docker and /tools; toolchain references moved without digest changes to a single Dockerfile.pins source consumed by Make. |
-| Astra 4 (main protection) | P1 | fixed | Ruleset 26738796 active, no bypass actors, deletion/force-push blocked, PR required, rebase only. Six required GitHub Actions checks applied and re-read through API. A one-code-owner-approval requirement was briefly applied, then removed by the conductor: the sole code owner authors the PRs and cannot approve them, so it deadlocked every merge. No push probe performed. |
-| Astra 5 (independent service); Astra 4 (all-ref prevention) | P1 | deferred-with-reason | Not an owner decision: the conductor scoped this branch to base-policy execution plus informative CODEOWNERS. A separately operated GitHub App/required workflow and pre-receive enforcement for every branch exceed that implementation; post-push CI cannot provide an absolute all-ref pre-push guarantee. Remaining acceptance is explicit below. |
-
-## Tracked adoption debt
-
-- Operational host debt (owner: platform maintainer): `smoke`, `smoke-real`, `poc-migrate`, `poc-seed`,
-  `poc-http`, `poc-bench`, `poc-bench-concurrent`, `smoke-k3s`, `bench-jsonb`, `bench-alter`, `bench-fk`
-  still need host Node/npm/tsx and their external databases, sentropic checkout or Kubernetes access.
-  Deferred by the conductor (no owner decision); adapting these environment-specific
-  mounts/endpoints exceeds this governance correction. Acceptance: each listed command runs through the
-  pinned container with documented mounts/endpoints on a host without Node/Cargo/tsx; verify against
-  isolated test services. Quality gates and db-up/down/query already use containers.
-- Server enforcement acceptance (owner: repository administrator): ruleset 26738796 now requires
-  `attribution`, `no-python`, `lint`, `test`, `ts`, `image` from GitHub Actions (integration 15368),
-  strict up-to-date checks and a PR (0 approvals: a sole owner cannot self-approve), without bypasses. API re-read confirms settings;
-  repository settings confirm squash/merge disabled and rebase enabled. Once this bootstrap is merged,
-  verify owner review and required-check blocking using a disposable PR. Independent required workflows
-  or a metadata-enforcing merge service remain necessary if policy must survive workflow tampering
-  independently of owner review; preventing attributed commits on every remote ref requires server-side
-  controls beyond post-push Actions. No push or PR was created for acceptance in this task.
-- Receipt promotion (owner: release maintainer): receipts are unsigned JSON. A future publishing
-  consumer must fetch an artifact from the expected repository/workflow/run or verify an attestation,
-  independently check job identities and require expected source/image digests. There is no promotion
-  consumer in this branch. Acceptance: forged/rebound local JSON cannot authorize publication.
+- `BR02-EX1` Makefile: add `npm-install` (NPM_LIB, NPM_DEV, pinned toolchain, `--save-exact`) and `npm-audit`
+  (`--audit-level=high`) so dependency bumps and their audit go through make. Impact: two new targets. Rollback: revert.
+- Advisory register for `@hono/node-server` 2.0.2, all fixed by 2.1.6:
+  - Repository advisories (honojs/node-server, published 2026-11-02, not yet in the global database: read with
+    `gh api /repos/honojs/node-server/security-advisories`; `/advisories/<id>` returns 404):
+    GHSA-jpvv-r467-5p4w (backslash parsed as a path separator, bypassing path-based access control at a reverse
+    proxy; >= 2.0.0 < 2.1.6, < 1.19.18), GHSA-7v5p-43qr-wch5 (WebSocket upgrade request-target starting with `//`
+    replaces the host in `c.req.url`, bypassing `Origin` checks; >= 2.0.0 < 2.1.6), GHSA-qv5m-9pm6-hqp3 (unhandled
+    `ECONNRESET` during an async WebSocket upgrade crashes the process; >= 2.0.0 < 2.1.6).
+  - Global advisories (`gh api '/advisories?affects=@hono/node-server&ecosystem=npm'`): GHSA-rmxm-3fg6-px4f
+    (serveStatic second decode, fixed 2.1.3), GHSA-9mqv-5hh9-4cgg (aborted WebSocket handshake memory leak, fixed
+    2.0.10), GHSA-frvp-7c67-39w9 (encoded backslash in serve-static on Windows, fixed 2.0.5).
+  - The 2.1.6 serve-static diff also rejects any `%` left after routing decode, any backslash in the filename,
+    non-GET/HEAD methods, and malformed ranges.
+- `attention` Exposure: only `tools/sentropic-poc/http-poc.ts` imports `@hono/node-server` (`serve`, no `serveStatic`,
+  no WebSocket); the vulnerable paths were not reachable from shipped code. The bump is preventive.
+- Discriminating cases (fail on 2.0.2, pass on 2.1.6): version floor; `%2541` double decode through serveStatic
+  (GHSA-rmxm); `/public/..\internal/secret` and `/public\..\internal/secret` reaching a route guarded only at the
+  proxy (GHSA-jpvv). Encoded-backslash and app-guarded variants pass on both versions and stay as invariant checks.
+  The WebSocket advisories are not exercised: no WebSocket upgrade exists in this repository.
+- `attention` Flaky: `tests/parity/sql-smoke.test.ts > opendb-node accepts typed primary-key schema over pgwire`
+  timed out once (38.7 s > 30 s) on a cold worktree, then passed on the same commit; unrelated to this branch.
 
 ## Plan / Todo (lot-based)
-- [ ] **Lot 0 — Baseline & constraints**
-  - [x] Backup bundle of all refs before purge, ref `backup/pre-purge-main`.
-  - [x] `purge/main-rewritten`: 6 commits `claude@anthropic.com` re-authored; per-commit tree/message/date equality verified.
-  - [x] Current `main` is the rewritten base `b1a8f1f`; no push is authorized in this correction task.
-- [ ] **Lot 1 — Governance and attribution guard**
-  - [x] `AGENTS.md`, `CLAUDE.md`, `rules/MASTER.md`, `plan/BRANCH_TEMPLATE.md`, `harness.profile.json`.
-  - [x] `tools/check-attribution.sh` + `.githooks/commit-msg`; tested: rejects a `Co-Authored-By` AI trailer and AI identities, passes the rewritten history.
-  - [x] Makefile workflow targets (BR01-EX1); `LICENSE` MIT (BR01-EX2).
-  - [x] `.claude/settings.json`: disable agent co-author attribution at the source.
-  - [x] `make scope-check` consumes `harness.profile.json` through the pinned containerized harness API.
-  - [ ] Lot gate: `make check-attribution` + `make check-no-python` + `make scope-check`.
-- [x] **Lot 2 — Docker-first toolchain**
-  - [x] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
-  - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
-  - [x] BR01-EX5 consensus: box large errors in internal Raft helpers; preserve public OpenRaft trait signatures.
-  - [x] BR01-EX5 operator: scope `double_must_use` suppression to `fetch`; async_trait generates the redundant attribute.
-  - [x] BR01-EX5 SQL executor: mechanical aggregate lint fixes; remove obsolete `project_joined_row` (multi-join execution builds and pads rows directly).
-  - [x] BR01-EX5 SQL parser: collapse conditions and remove the duplicate test attribute; record the existing CHARACTER VARYING gap above.
-  - [x] Lot gate: `make -k check ENV=test-harness-adopt` green in containers.
-- [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
-  - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
-  - [x] Docker-only musl build, Alpine image smoke test, and Make entry points for receipt write/verify.
-  - [x] Workflow: attribution guard on the PR range, no-python, lint, tests, TS; tested-artifact receipt for the image.
-  - [x] `make check-ci ENV=test-harness-adopt`: actionlint passes; all actions pinned to full commit SHAs.
-  - [x] Weekly Dependabot updates for npm, cargo, docker and github-actions.
-  - [ ] Lot gate: CI green on the PR.
-- [ ] **Lot 4 — Track (BR01-EX4)**
-  - [ ] `track init`; import this `BRANCH.md`; workpackages from `docs/roadmap` (WP1–WP7).
+- [x] **Lot 0 — Baseline**
+  - [x] Usage audit: only `tools/sentropic-poc/http-poc.ts` imports `@hono/node-server`.
+  - [x] Targets exist on npm, all MIT: `@hono/node-server@2.1.6`, `hono@4.13.17`, `vitest@4.1.12`.
+- [x] **Lot 1 — Bumps and regression test**
+  - [x] `make npm-install NPM_LIB=@hono/node-server@2.1.6`, `NPM_LIB=hono@4.13.17`, `NPM_LIB=vitest@4.1.12 NPM_DEV=1`.
+  - [x] Single copies in the lockfile: `@hono/node-server` 2.1.6, `hono` 4.13.17, `vitest` 4.1.12, `vite` 8.3.6.
+  - [x] `tests/security/hono-node-server-path.test.ts` (20 cases): fails on 2.0.2 (version floor, `%2541`
+        double decode, two backslash proxy-bypass paths), passes on 2.1.6.
+  - [x] Lot gate: `make npm-audit` (0 vulnerabilities), `make check-ts`, `make vitest` (58/58).
 - [ ] **Lot N — Final validation**
-  - [ ] `make check`; PR body = this `BRANCH.md`; owner sign-off; remove `BRANCH.md` before merge.
+  - [ ] `make check-attribution ATTRIBUTION_RANGE=chore/harness-adopt..HEAD`; CI green; owner sign-off; remove `BRANCH.md` before merge.
