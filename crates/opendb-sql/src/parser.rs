@@ -694,21 +694,21 @@ fn unquote_identifier(raw: &str) -> String {
     // Sprint 18.B: handle Drizzle's qualified `"schema"."identifier"` form by
     // peeling the schema prefix (opendb does not model schemas — every table
     // lives in the implicit default).
-    if trimmed.starts_with('"') {
-        if let Some((maybe_schema, rest)) = strip_quoted_segment(trimmed) {
-            if rest.is_empty() {
-                return maybe_schema.to_owned();
+    if trimmed.starts_with('"')
+        && let Some((maybe_schema, rest)) = strip_quoted_segment(trimmed)
+    {
+        if rest.is_empty() {
+            return maybe_schema.to_owned();
+        }
+        if let Some(after_dot) = rest.strip_prefix('.') {
+            let after_dot = after_dot.trim();
+            if let Some(stripped) = after_dot
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+            {
+                return stripped.to_owned();
             }
-            if let Some(after_dot) = rest.strip_prefix('.') {
-                let after_dot = after_dot.trim();
-                if let Some(stripped) = after_dot
-                    .strip_prefix('"')
-                    .and_then(|s| s.strip_suffix('"'))
-                {
-                    return stripped.to_owned();
-                }
-                return after_dot.to_owned();
-            }
+            return after_dot.to_owned();
         }
     }
     // Drizzle (and any pgwire client respecting SQL standards) wraps
@@ -1321,9 +1321,6 @@ fn parse_column_type_tokens(tokens: &[String]) -> OpenDbResult<(ColumnType, usiz
                 )))
             }
         }
-        "CHARACTER" if tokens.len() >= 2 && tokens[1].eq_ignore_ascii_case("VARYING") => {
-            Ok((ColumnType::Text, 2))
-        }
         "TIMESTAMP" | "TIMESTAMPTZ" | "DATE" | "TIME" => Ok((ColumnType::Timestamp, 1)),
         "JSON" | "JSONB" => Ok((ColumnType::Json, 1)),
         _ => Err(OpenDbError::Sql(format!(
@@ -1487,10 +1484,10 @@ fn filter_default_columns(
             continue;
         }
         filtered_values.push(parse_value(raw)?);
-        if let (Some(src), Some(dst)) = (columns, filtered_columns.as_mut()) {
-            if let Some(name) = src.get(idx) {
-                dst.push(name.clone());
-            }
+        if let (Some(src), Some(dst)) = (columns, filtered_columns.as_mut())
+            && let Some(name) = src.get(idx)
+        {
+            dst.push(name.clone());
         }
     }
     Ok((filtered_values, filtered_columns))
@@ -2999,7 +2996,6 @@ mod tests {
         );
     }
 
-    #[test]
     #[test]
     fn debug_comments_table() {
         let sql = r#"CREATE TABLE IF NOT EXISTS "comments" (
