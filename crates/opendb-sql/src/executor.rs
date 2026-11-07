@@ -5,6 +5,8 @@ use opendb_storage::commit_stream::{
 };
 use opendb_storage::row_projection::RowProjection;
 
+type AggregateGroup = (Vec<Value>, Vec<AggregateState>, Vec<AggregateState>);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RouteIntent {
     Root,
@@ -808,21 +810,20 @@ impl SqlEngine {
                 .any(|g| g == name || column_basename(g) == name || g == bare)
         };
         for item in &projection.items {
-            if let AggregateOrColumn::Column(name) = &item.expr {
-                if !in_group_by(name) {
-                    return Err(OpenDbError::Sql(format!(
-                        "column {name} must appear in GROUP BY"
-                    )));
-                }
+            if let AggregateOrColumn::Column(name) = &item.expr
+                && !in_group_by(name)
+            {
+                return Err(OpenDbError::Sql(format!(
+                    "column {name} must appear in GROUP BY"
+                )));
             }
-            if let AggregateOrColumn::Aggregate(expr) = &item.expr {
-                if let AggregateArg::Column(name) = &expr.arg {
-                    if !column_exists(name) {
-                        return Err(OpenDbError::Sql(format!(
-                            "aggregate column {name} not in table {table}"
-                        )));
-                    }
-                }
+            if let AggregateOrColumn::Aggregate(expr) = &item.expr
+                && let AggregateArg::Column(name) = &expr.arg
+                && !column_exists(name)
+            {
+                return Err(OpenDbError::Sql(format!(
+                    "aggregate column {name} not in table {table}"
+                )));
             }
         }
         // Predicate type-check (same gating as scalar SelectAll).
@@ -850,10 +851,8 @@ impl SqlEngine {
         // `Value` does not implement `Ord`. Each group carries two parallel
         // state vectors: one for the projection items, one for the HAVING
         // aggregate expressions (used by Sprint 15.C).
-        let mut groups: std::collections::BTreeMap<
-            String,
-            (Vec<Value>, Vec<AggregateState>, Vec<AggregateState>),
-        > = std::collections::BTreeMap::new();
+        let mut groups: std::collections::BTreeMap<String, AggregateGroup> =
+            std::collections::BTreeMap::new();
         let mut matched_any = false;
         for row in table_state.rows.values() {
             if !predicates.iter().all(|p| evaluate_predicate(row, p)) {
@@ -920,7 +919,7 @@ impl SqlEngine {
             output_rows.push(row);
             let _ = matched_any;
         } else {
-            for (_, (key_values, states, _)) in &groups {
+            for (key_values, states, _) in groups.values() {
                 let row: Vec<Value> = projection
                     .items
                     .iter()
@@ -946,10 +945,7 @@ impl SqlEngine {
         // during the main fold (or against the GROUP BY key for bare-column
         // predicates).
         if !having.is_empty() {
-            let groups_vec: Vec<(
-                &String,
-                &(Vec<Value>, Vec<AggregateState>, Vec<AggregateState>),
-            )> = groups.iter().collect();
+            let groups_vec: Vec<(&String, &AggregateGroup)> = groups.iter().collect();
             let mut kept: Vec<Vec<Value>> = Vec::with_capacity(output_rows.len());
             if group_by.is_empty() && groups.is_empty() {
                 let empty_having_states: Vec<AggregateState> =
@@ -1252,12 +1248,12 @@ fn aggregate_joined_rows(
                 }
             }
             AggregateOrColumn::Aggregate(expr) => {
-                if let AggregateArg::Column(name) = &expr.arg {
-                    if resolve(name).is_none() {
-                        return Err(OpenDbError::Sql(format!(
-                            "aggregate column {name} not found in joined projection"
-                        )));
-                    }
+                if let AggregateArg::Column(name) = &expr.arg
+                    && resolve(name).is_none()
+                {
+                    return Err(OpenDbError::Sql(format!(
+                        "aggregate column {name} not found in joined projection"
+                    )));
                 }
             }
         }
@@ -1291,10 +1287,8 @@ fn aggregate_joined_rows(
         })
         .collect();
 
-    let mut groups: std::collections::BTreeMap<
-        String,
-        (Vec<Value>, Vec<AggregateState>, Vec<AggregateState>),
-    > = std::collections::BTreeMap::new();
+    let mut groups: std::collections::BTreeMap<String, AggregateGroup> =
+        std::collections::BTreeMap::new();
     for row in joined_rows {
         let key_values: Vec<Value> = group_by_idx
             .iter()
@@ -1355,7 +1349,7 @@ fn aggregate_joined_rows(
             .collect();
         output_rows.push(row);
     } else {
-        for (_, (key_values, states, having_states)) in &groups {
+        for (key_values, states, having_states) in groups.values() {
             if !having_matches(having, &having_aggs, group_by, key_values, having_states) {
                 continue;
             }
@@ -1818,26 +1812,6 @@ impl SqlEngine {
     }
 }
 
-fn project_joined_row(
-    left_columns: &[String],
-    left_row: &std::collections::BTreeMap<String, Value>,
-    right_columns: &[String],
-    right_row: Option<&std::collections::BTreeMap<String, Value>>,
-) -> Vec<Value> {
-    let mut row = Vec::with_capacity(left_columns.len() + right_columns.len());
-    for column in left_columns {
-        row.push(left_row.get(column).cloned().unwrap_or(Value::Null));
-    }
-    for column in right_columns {
-        let value = match right_row {
-            Some(r) => r.get(column).cloned().unwrap_or(Value::Null),
-            None => Value::Null,
-        };
-        row.push(value);
-    }
-    row
-}
-
 fn values_join_match(left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
@@ -2011,7 +1985,7 @@ fn materialize_insert_values(
                 )));
             }
             let mut result = Vec::with_capacity(schema.len());
-            for (column, value) in schema.iter().zip(values.into_iter()) {
+            for (column, value) in schema.iter().zip(values) {
                 let value = coerce_value(value, &column.data_type);
                 if value.is_null() && !column.nullable {
                     return Err(OpenDbError::InvalidInput(format!(
