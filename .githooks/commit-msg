@@ -1,3 +1,5 @@
 #!/bin/sh
-# Installed by `make hooks` (core.hooksPath=.githooks). Not bypassable in CI: the same check runs there.
-exec "$(git rev-parse --show-toplevel)/tools/check-attribution.sh" --message-file "$1"
+# Installed by `make hooks`; authoritative CI policy comes from the base revision.
+set -eu
+root=$(git rev-parse --show-toplevel) || exit 1
+exec sh "$root/tools/check-attribution.sh" --message-file "$1"

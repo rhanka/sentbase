@@ -96,6 +96,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Finding | Priority | Outcome | Evidence / remaining acceptance |
 | --- | --- | --- | --- |
 | Argon P1-5 | P1 | fixed | Scope reflects touched files; EX6 declared; Track remains unchecked. ENV isolation and final gate evidence follow below. |
+| Astra 1, 2, 3; Argon P0-1 (local policy) | P1 / P0 | fixed | Shared identifiers, effective hook identities, checked Git/message reads; regression suite follows. All bots, including dependabot, require human re-authorship; no unverifiable dependency-only exception. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
