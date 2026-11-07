@@ -108,6 +108,18 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 6; Argon P1-4 | P2 / P1 | fixed | Verified Alpine digest; exact preinstalled certificate bundle 20260413-r0 avoids mutable repositories entirely. Normalized tar ownership/time; anchored paths; `check-image-inputs` enforces pins. |
 | Astra 7 (image execution) | P2 | fixed | `make image-integration` starts the exact image ID as opendb, writes/reads SQL, restarts with the same volume, checks recovered data and emits exercised digest. Gate execution recorded in final validation. |
 | Astra 7 (receipt); Argon P1-2 | P2 / P1 | fixed | Receipt requires successful integration at exact source/image digests; key-order-safe structural comparison; expected evidence always validated; verifier inspects the actual loaded Docker tag. |
+| Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets, as authorized by owner. ENV selects runtime tag, container and data directory. |
+| Argon P2-1 | P2 | fixed | No-Python walker explicitly ignores tmp and toolchain caches. |
+
+## Tracked adoption debt
+
+- Operational host debt (owner: platform maintainer): `smoke`, `smoke-real`, `poc-migrate`, `poc-seed`,
+  `poc-http`, `poc-bench`, `poc-bench-concurrent`, `smoke-k3s`, `bench-jsonb`, `bench-alter`, `bench-fk`
+  still need host Node/npm/tsx and their external databases, sentropic checkout or Kubernetes access.
+  Deferred under the owner's explicit operational-target allowance; adapting these environment-specific
+  mounts/endpoints exceeds this governance correction. Acceptance: each listed command runs through the
+  pinned container with documented mounts/endpoints on a host without Node/Cargo/tsx; verify against
+  isolated test services. Quality gates and db-up/down/query already use containers.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
