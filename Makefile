@@ -59,6 +59,14 @@ toolchain: ## Build the pinned Rust + Node toolchain (Docker is the only host to
 npm-ci: toolchain ## Install locked Node dependencies, including dev dependencies, in Docker
 	$(TOOLCHAIN_RUN) $(NPM) ci --include=dev
 
+.PHONY: npm-install npm-audit
+npm-install: toolchain ## Build: add or bump a Node dependency in Docker (NPM_LIB="pkg@x.y.z", NPM_DEV=1 for dev)
+	@if [ -z "$(NPM_LIB)" ]; then echo 'NPM_LIB is required: make npm-install NPM_LIB="pkg@x.y.z"'; exit 1; fi
+	$(TOOLCHAIN_RUN) $(NPM) install --save-exact $(if $(NPM_DEV),--save-dev,) $(NPM_LIB)
+
+npm-audit: npm-ci ## Check: npm audit of the locked dependency graph (fails on high or critical)
+	$(TOOLCHAIN_RUN) $(NPM) audit --audit-level=high
+
 .PHONY: build
 build: toolchain ## Build the full Rust workspace
 	$(TOOLCHAIN_RUN) $(CARGO) build --workspace --locked
