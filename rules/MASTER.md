@@ -1,13 +1,14 @@
 ---
-description: "Consolidated AI development rules for opendb (sentropic harness) - loaded in every conversation"
+description: "Consolidated AI development rules for sentbase (sentropic harness) - loaded in every conversation"
 alwaysApply: true
 paths: ["**/*"]
 tags: [master]
 ---
 
-# MASTER RULES — opendb
+# MASTER RULES — sentbase
 
-opendb is the MIT-licensed database engine of the sentropic data platform (Rust engine + Node/TS tooling).
+sentbase is an MIT-licensed, self-deployable data platform (a Supabase-equivalent) with its own database
+engine (the former opendb: Rust engine + Node/TS tooling), never sold under any other license.
 These rules adopt the sentropic harness; repo-specific policy lives in `harness.profile.json`.
 
 ## License (MANDATORY)

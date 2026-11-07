@@ -1,7 +1,7 @@
-# Chore: adopt the sentropic harness in opendb
+# Chore: adopt the sentropic harness in sentbase (opendb import)
 
 ## Objective
-Bring opendb under the sentropic harness (rules, scope control, make-only, commit discipline, Track, CI) and make
+Bring sentbase (which absorbs the opendb repository and history) under the sentropic harness (rules, scope control, make-only, commit discipline, Track, CI) and make
 AI/agent attribution in commits mechanically impossible, after the owner-approved history purge.
 
 ## Scope / Guardrails
@@ -23,6 +23,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `.githooks/**`
   - `.claude/settings.json`
   - `.gitignore`
+  - `README.md`
 - **Forbidden Paths (must not change in this branch)**:
   - `crates/**`
   - `Cargo.toml`
