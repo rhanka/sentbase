@@ -110,8 +110,12 @@ check-manifests: npm-ci ## Validate Kubernetes manifests
 vitest: npm-ci build ## Run all vitest suites (npm test), including SQL parity's Cargo subprocess
 	$(TOOLCHAIN_RUN) $(NPM) test
 
+.PHONY: test-image-receipt
+test-image-receipt: toolchain ## Test image receipts against failed checks, stale SHAs and image substitution
+	$(TOOLCHAIN_RUN) node --test tools/image-receipt.test.mjs
+
 .PHONY: check
-check: lint test check-ts check-no-python check-manifests vitest ## Full check pipeline (lint + tests + npm checks + vitest)
+check: lint test check-ts check-no-python check-manifests vitest test-image-receipt ## Full check pipeline
 
 # ----- Git workflow ---------------------------------------------------------
 
