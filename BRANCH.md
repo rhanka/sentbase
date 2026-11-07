@@ -113,6 +113,8 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets, as authorized by owner. ENV selects runtime tag, container and data directory. |
 | Argon P2-1 | P2 | fixed | No-Python walker explicitly ignores tmp and toolchain caches. |
 | Argon P2-3 (Docker updates) | P2 | fixed | Dependabot scans /deploy/docker and /tools; toolchain references moved without digest changes to a single Dockerfile.pins source consumed by Make. |
+| Astra 4 (main protection) | P1 | fixed | Ruleset 26738796 active, no bypass actors, deletion/force-push blocked, PR required, rebase only. Required GitHub Actions checks and one CODEOWNERS approval applied and re-read through API. No push probe performed. |
+| Astra 5 (independent service); Astra 4 (all-ref prevention) | P1 | rejected-with-reason | Owner specified base-policy execution plus CODEOWNERS for this branch. A separately operated GitHub App/required workflow and pre-receive enforcement for every branch exceed that implementation; post-push CI cannot provide an absolute all-ref pre-push guarantee. Remaining acceptance is explicit below. |
 
 ## Tracked adoption debt
 
@@ -123,6 +125,18 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
   mounts/endpoints exceeds this governance correction. Acceptance: each listed command runs through the
   pinned container with documented mounts/endpoints on a host without Node/Cargo/tsx; verify against
   isolated test services. Quality gates and db-up/down/query already use containers.
+- Server enforcement acceptance (owner: repository administrator): ruleset 26738796 now requires
+  `attribution`, `no-python`, `lint`, `test`, `ts`, `image` from GitHub Actions (integration 15368),
+  strict up-to-date checks and one code-owner review, without bypasses. API re-read confirms settings;
+  repository settings confirm squash/merge disabled and rebase enabled. Once this bootstrap is merged,
+  verify owner review and required-check blocking using a disposable PR. Independent required workflows
+  or a metadata-enforcing merge service remain necessary if policy must survive workflow tampering
+  independently of owner review; preventing attributed commits on every remote ref requires server-side
+  controls beyond post-push Actions. No push or PR was created for acceptance in this task.
+- Receipt promotion (owner: release maintainer): receipts are unsigned JSON. A future publishing
+  consumer must fetch an artifact from the expected repository/workflow/run or verify an attestation,
+  independently check job identities and require expected source/image digests. There is no promotion
+  consumer in this branch. Acceptance: forged/rebound local JSON cannot authorize publication.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**

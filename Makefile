@@ -124,7 +124,7 @@ test-image-receipt: toolchain ## Test image receipts against failed checks, stal
 	$(TOOLCHAIN_RUN) node --test tools/image-receipt.test.mjs
 
 .PHONY: check
-check: lint test check-ts check-no-python check-manifests vitest test-image-receipt test-attribution test-workflow check-license check-ci scope-check ## Full check pipeline
+check: lint test check-ts check-no-python check-manifests vitest test-image-receipt test-attribution test-workflow check-license check-image-inputs check-ci scope-check ## Full check pipeline
 
 .PHONY: check-license
 check-license: toolchain ## Check every workspace package and the npm manifest declare MIT
