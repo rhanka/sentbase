@@ -236,11 +236,12 @@ image-integration: image npm-ci ## Test the exact image ID with SQL write/read a
 RECEIPT_RUN = $(DOCKER_RUN) -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_WORKFLOW \
 	-e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CI_NEEDS -e SOURCE_SHA="$$($(GIT) rev-parse HEAD)" \
 	$(TOOLCHAIN_IMAGE) node tools/image-receipt.mjs
-RECEIPT_FILES := tmp/ci/image-receipt.json tmp/ci/image-metadata.json tmp/ci/image-id
-image-receipt: image ## Check successful same-SHA jobs and write the tested image receipt
+RECEIPT_FILES := tmp/ci/image-receipt.json tmp/ci/image-metadata.json tmp/ci/image-id tmp/ci/image-integration.json
+image-receipt: image-integration ## Require source gates and exact-image integration before writing a receipt
 	$(RECEIPT_RUN) write $(RECEIPT_FILES)
-verify-image-receipt: toolchain ## Check the image receipt against this workflow run and build metadata
-	$(RECEIPT_RUN) verify $(RECEIPT_FILES)
+verify-image-receipt: toolchain ## Inspect the currently loaded tag and verify its exact-image receipt
+	@actual_id="$$(docker image inspect $(IMAGE_TAG) --format '{{.Id}}')" && \
+	  $(RECEIPT_RUN) verify tmp/ci/image-receipt.json tmp/ci/image-metadata.json "$$actual_id" tmp/ci/image-integration.json
 
 .PHONY: poc-bench
 poc-bench: ## Sprint 20: side-by-side latency bench opendb-node vs postgres:16-alpine

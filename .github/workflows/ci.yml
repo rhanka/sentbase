@@ -108,7 +108,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Build, smoke-test and verify the image receipt
+      - name: Build, test SQL and recovery, and verify the loaded image receipt
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: make image-receipt verify-image-receipt
