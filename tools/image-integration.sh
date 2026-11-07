@@ -28,7 +28,7 @@ wait_health() {
   return 1
 }
 probe() {
-  docker run --rm --network "$name" -v "$root:/workspace:ro" -w /workspace \
+  docker run --rm -i --network "$name" -v "$root:/workspace:ro" -w /workspace \
     "$toolchain" node --input-type=module - "$1" <<'JS'
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -50,7 +50,7 @@ docker restart --time 5 "$name" >/dev/null
 wait_health
 probe recover
 test "$(docker inspect "$name" --format '{{.Image}}')" = "$image_id"
-docker run --rm --user "$(id -u):$(id -g)" -v "$root:/workspace" -w /workspace \
+docker run --rm -i --user "$(id -u):$(id -g)" -v "$root:/workspace" -w /workspace \
   -e IMAGE_ID="$image_id" -e SOURCE_SHA "${toolchain}" node --input-type=module - <<'JS'
 import { readFileSync, writeFileSync } from 'node:fs';
 const metadata = JSON.parse(readFileSync('tmp/ci/image-metadata.json', 'utf8'));

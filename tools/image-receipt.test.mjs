@@ -9,17 +9,21 @@ const context = { repo: 'example/sentbase', sha, sourceSha: sha, workflow: 'CI',
 const metadata = { 'containerimage.digest': imageDigest, 'containerimage.config.digest': imageId };
 const jobs = ['attribution', 'no-python', 'lint', 'test', 'ts'];
 const checks = () => Object.fromEntries(jobs.map(job => [job, { result: 'success', outputs: { sha } }]));
-const receipt = () => createReceipt(context, checks(), metadata, imageId);
+const integration = { result: 'success', sourceSha: sha, imageDigest, imageId,
+  checks: ['sql-write-read', 'restart-recovery'] };
+const inputs = () => [context, checks(), metadata, imageId, integration];
+const receipt = () => createReceipt(...inputs());
 
 test('should bind a receipt to the built image and successful jobs for one SHA', () => {
   const result = receipt();
   assert.equal(result.imageDigest, imageDigest);
   assert.deepEqual(result.testedJobs, jobs.map(job => ({ job, sha })));
-  assert.deepEqual(verifyReceipt(JSON.parse(JSON.stringify(result)), receipt()), result);
+  assert.deepEqual(verifyReceipt(JSON.parse(JSON.stringify(result)), ...inputs()), result);
 });
 
 test('should accept the manifest image ID returned by Docker containerd stores', () => {
-  const result = createReceipt(context, checks(), { 'containerimage.digest': imageDigest }, imageDigest);
+  const result = createReceipt(context, checks(), { 'containerimage.digest': imageDigest }, imageDigest,
+    { ...integration, imageId: imageDigest });
   assert.equal(result.imageId, imageDigest);
 });
 
@@ -49,6 +53,22 @@ test('should reject missing identity, checkout mismatch and image substitution',
 
 test('should reject receipt reuse across runs, attempts, source commits and images', () => {
   for (const key of ['repo', 'sourceSha', 'workflow', 'runId', 'attempt', 'imageDigest', 'imageId', 'testedJobs']) {
-    assert.throws(() => verifyReceipt({ ...receipt(), [key]: 'stale' }, receipt()), /does not match/);
+    assert.throws(() => verifyReceipt({ ...receipt(), [key]: 'stale' }, ...inputs()), /does not match/);
+  }
+});
+
+test('should accept reordered JSON keys while validating all expected evidence', () => {
+  const result = receipt();
+  const reordered = Object.fromEntries(Object.entries(result).reverse());
+  reordered.imageIntegration = Object.fromEntries(Object.entries(integration).reverse());
+  assert.deepEqual(verifyReceipt(reordered, ...inputs()), result);
+  assert.throws(() => verifyReceipt(result, { ...context, sha: 'invalid' }, checks(), metadata, imageId, integration), /identity/);
+});
+
+test('should reject absent failed stale substituted or incomplete image integration', () => {
+  for (const evidence of [undefined, { ...integration, result: 'failure' },
+    { ...integration, sourceSha: 'd'.repeat(40) }, { ...integration, imageId: imageDigest },
+    { ...integration, imageDigest: imageId }, { ...integration, checks: ['sql-write-read'] }]) {
+    assert.throws(() => createReceipt(context, checks(), metadata, imageId, evidence), /Image integration/);
   }
 });
