@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  attribution:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.checked.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - id: checked
+        env:
+          ATTRIBUTION_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}..HEAD', github.base_ref) || 'HEAD' }}
+        run: make check-attribution ci-source
+
+  no-python:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.checked.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: checked
+        run: make check-no-python ci-source
+
+  lint:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.checked.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: checked
+        run: make lint check-ci check-manifests ci-source
+
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.checked.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: checked
+        run: make test ci-source
+
+  ts:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.checked.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: checked
+        run: make check-ts vitest test-image-receipt ci-source
+
+  image:
+    runs-on: ubuntu-latest
+    needs: [attribution, no-python, lint, test, ts]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build, smoke-test and verify the image receipt
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: make image-receipt verify-image-receipt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-receipt-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tmp/ci/image-receipt.json
+          if-no-files-found: error
+          retention-days: 14
