@@ -46,3 +46,44 @@ test('should reject multiline carriage-return and attributed messages', () => {
     assert.equal(git('rev-parse', 'HEAD'), before);
   }
 });
+
+test('should inspect staged unstaged untracked and committed scope and fail without harness', () => {
+  const dir = join(cwd, 'scope');
+  mkdirSync(dir);
+  const g = (...args) => execFileSync('git', args, { cwd: dir, env, encoding: 'utf8' });
+  g('init', '-q', '-b', 'main');
+  const plan = '# Scope\n## Boundaries\n- **Allowed Paths**:\n  - `BRANCH.md`\n  - `harness.profile.json`\n  - `seed`\n- **Forbidden Paths**:\n  - `Cargo.lock`\n';
+  writeFileSync(join(dir, 'BRANCH.md'), plan);
+  copyFileSync(resolve('harness.profile.json'), join(dir, 'harness.profile.json'));
+  writeFileSync(join(dir, 'seed'), 'baseline');
+  g('add', 'BRANCH.md', 'harness.profile.json', 'seed');
+  g('-c', 'commit.gpgsign=false', 'commit', '-qm', 'test: baseline');
+  g('switch', '-qc', 'scope-test');
+  const scope = (extra = {}) => spawnSync('node', [resolve('tools/scope-check.mjs')], {
+    cwd: dir, env: { ...env, HARNESS_MODULE: resolve('tmp/toolchain/harness/node_modules/@sentropic/harness/dist/index.js'),
+      SCOPE_RANGE: 'main...HEAD', ...extra }, encoding: 'utf8',
+  });
+  assert.equal(scope().status, 0);
+  assert.notEqual(scope({ HARNESS_MODULE: '/nonexistent/harness.js' }).status, 0);
+  assert.notEqual(scope({ SCOPE_RANGE: 'invalid...HEAD' }).status, 0);
+  writeFileSync(join(dir, 'outside.txt'), 'untracked');
+  assert.notEqual(scope().status, 0);
+  g('add', 'outside.txt');
+  assert.notEqual(scope().status, 0);
+  g('-c', 'commit.gpgsign=false', 'commit', '-qm', 'test: committed outside scope');
+  assert.notEqual(scope().status, 0); // clean worktree still checks the branch range
+  writeFileSync(join(dir, 'BRANCH.md'), plan.replace('  - `seed`', '  - `seed`\n  - `outside.txt`'));
+  assert.equal(scope().status, 0);
+  writeFileSync(join(dir, 'seed'), 'unstaged');
+  writeFileSync(join(dir, 'BRANCH.md'), plan.replace('  - `seed`\n', '  - `outside.txt`\n'));
+  assert.notEqual(scope().status, 0);
+});
+
+test('should refuse detached pushes before invoking git push', () => {
+  const fake = join(cwd, 'fake-git');
+  writeFileSync(fake, '#!/bin/sh\ncase "$1" in branch) exit 0;; *) echo unexpected >&2; exit 99;; esac\n', { mode: 0o755 });
+  const result = spawnSync('make', ['push', `GIT=${fake}`], { cwd, env, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /Refusing detached HEAD or main/);
+  assert.doesNotMatch(result.stderr, /unexpected/);
+});

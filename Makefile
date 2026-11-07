@@ -124,7 +124,7 @@ test-image-receipt: toolchain ## Test image receipts against failed checks, stal
 	$(TOOLCHAIN_RUN) node --test tools/image-receipt.test.mjs
 
 .PHONY: check
-check: lint test check-ts check-no-python check-manifests vitest test-image-receipt check-ci ## Full check pipeline
+check: lint test check-ts check-no-python check-manifests vitest test-image-receipt test-attribution test-workflow check-license check-ci scope-check ## Full check pipeline
 
 .PHONY: check-license
 check-license: toolchain ## Check every workspace package and the npm manifest declare MIT
@@ -160,7 +160,7 @@ ci-source: ## Check: record the checked-out SHA after a successful CI gate
 
 .PHONY: harness-tool scope-check
 harness-tool: toolchain ## Install the exact harness CLI/API in the isolated tooling cache
-	@$(TOOLCHAIN_RUN) sh -ec 'test -f tmp/toolchain/harness/node_modules/@sentropic/harness/dist/index.js || npm install --prefix tmp/toolchain/harness --no-package-lock --ignore-scripts --no-save @sentropic/harness@0.4.0'
+	@$(TOOLCHAIN_RUN) sh -ec 'node -e '\''if (require("./tmp/toolchain/harness/node_modules/@sentropic/harness/package.json").version !== "0.4.0") process.exit(1)'\'' 2>/dev/null || npm install --prefix tmp/toolchain/harness --no-package-lock --ignore-scripts --no-save @sentropic/harness@0.4.0'
 
 export SCOPE_RANGE ?= main...HEAD
 scope-check: harness-tool ## Check: branch range plus staged/unstaged/untracked against the project profile
@@ -173,13 +173,21 @@ override export MSG := $(value MSG)
 commit: $(if $(wildcard BRANCH.md),scope-check) ## Git: commit staged files with a literal single-line MSG
 	@sh tools/commit.sh
 
-test-workflow: toolchain ## Test literal commit messages and scope failure handling
+test-workflow: harness-tool ## Test literal commit messages and scope failure handling
 	$(TOOLCHAIN_RUN) node --test tools/workflow.test.mjs
 
-.PHONY: push
-push: ## Git: push the current branch (never main; main changes go through PRs)
-	@b="$$($(GIT) branch --show-current)"; if [ "$$b" = "main" ]; then echo "Refusing to push main directly"; exit 1; fi; \
-	$(GIT) push -u origin "$$b"
+.PHONY: check-push-attribution push
+check-push-attribution: ## Check: scan the exact outgoing branch range before push
+	@set -e; b="$$($(GIT) branch --show-current)"; \
+	  if [ -z "$$b" ] || [ "$$b" = main ]; then echo 'Refusing detached HEAD or main'; exit 1; fi; \
+	  ref="refs/remotes/origin/$$b"; \
+	  if $(GIT) show-ref --verify --quiet "$$ref"; then base="$$ref"; \
+	  else status=$$?; [ "$$status" -eq 1 ] || exit "$$status"; base=refs/remotes/origin/main; fi; \
+	  sh tools/check-attribution.sh "$$base..HEAD"
+push: check-push-attribution ## Git: push a scanned branch with an explicit refspec
+	@set -e; b="$$($(GIT) branch --show-current)"; \
+	  test -n "$$b" && test "$$b" != main; \
+	  $(GIT) push -u origin "refs/heads/$$b:refs/heads/$$b"
 
 .PHONY: diff
 diff: ## Show uncommitted diff
