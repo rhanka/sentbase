@@ -110,24 +110,24 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 6; Argon P1-4 | P2 / P1 | fixed | Verified Alpine digest; exact preinstalled certificate bundle 20260413-r0 avoids mutable repositories entirely. Normalized tar ownership/time; anchored paths; `check-image-inputs` enforces pins. |
 | Astra 7 (image execution) | P2 | fixed | `make image-integration` starts the exact image ID as opendb, writes/reads SQL, restarts with the same volume, checks recovered data and emits exercised digest. Gate execution recorded in final validation. |
 | Astra 7 (receipt); Argon P1-2 | P2 / P1 | fixed | Receipt requires successful integration at exact source/image digests; key-order-safe structural comparison; expected evidence always validated; verifier inspects the actual loaded Docker tag. |
-| Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets, as authorized by owner. ENV selects runtime tag, container and data directory. |
+| Astra 9; Argon P2-2 (operations) | P2 | fixed / deferred-with-reason | db-up/down/query use containers; explicit host debt below for POC/bench/k3s targets (deferral decided by the conductor, not by the owner). ENV selects runtime tag, container and data directory. |
 | Argon P2-1 | P2 | fixed | No-Python walker explicitly ignores tmp and toolchain caches. |
 | Argon P2-3 (Docker updates) | P2 | fixed | Dependabot scans /deploy/docker and /tools; toolchain references moved without digest changes to a single Dockerfile.pins source consumed by Make. |
-| Astra 4 (main protection) | P1 | fixed | Ruleset 26738796 active, no bypass actors, deletion/force-push blocked, PR required, rebase only. Required GitHub Actions checks and one CODEOWNERS approval applied and re-read through API. No push probe performed. |
-| Astra 5 (independent service); Astra 4 (all-ref prevention) | P1 | rejected-with-reason | Owner specified base-policy execution plus CODEOWNERS for this branch. A separately operated GitHub App/required workflow and pre-receive enforcement for every branch exceed that implementation; post-push CI cannot provide an absolute all-ref pre-push guarantee. Remaining acceptance is explicit below. |
+| Astra 4 (main protection) | P1 | fixed | Ruleset 26738796 active, no bypass actors, deletion/force-push blocked, PR required, rebase only. Six required GitHub Actions checks applied and re-read through API. A one-code-owner-approval requirement was briefly applied, then removed by the conductor: the sole code owner authors the PRs and cannot approve them, so it deadlocked every merge. No push probe performed. |
+| Astra 5 (independent service); Astra 4 (all-ref prevention) | P1 | deferred-with-reason | Not an owner decision: the conductor scoped this branch to base-policy execution plus informative CODEOWNERS. A separately operated GitHub App/required workflow and pre-receive enforcement for every branch exceed that implementation; post-push CI cannot provide an absolute all-ref pre-push guarantee. Remaining acceptance is explicit below. |
 
 ## Tracked adoption debt
 
 - Operational host debt (owner: platform maintainer): `smoke`, `smoke-real`, `poc-migrate`, `poc-seed`,
   `poc-http`, `poc-bench`, `poc-bench-concurrent`, `smoke-k3s`, `bench-jsonb`, `bench-alter`, `bench-fk`
   still need host Node/npm/tsx and their external databases, sentropic checkout or Kubernetes access.
-  Deferred under the owner's explicit operational-target allowance; adapting these environment-specific
+  Deferred by the conductor (no owner decision); adapting these environment-specific
   mounts/endpoints exceeds this governance correction. Acceptance: each listed command runs through the
   pinned container with documented mounts/endpoints on a host without Node/Cargo/tsx; verify against
   isolated test services. Quality gates and db-up/down/query already use containers.
 - Server enforcement acceptance (owner: repository administrator): ruleset 26738796 now requires
   `attribution`, `no-python`, `lint`, `test`, `ts`, `image` from GitHub Actions (integration 15368),
-  strict up-to-date checks and one code-owner review, without bypasses. API re-read confirms settings;
+  strict up-to-date checks and a PR (0 approvals: a sole owner cannot self-approve), without bypasses. API re-read confirms settings;
   repository settings confirm squash/merge disabled and rebase enabled. Once this bootstrap is merged,
   verify owner review and required-check blocking using a disposable PR. Independent required workflows
   or a metadata-enforcing merge service remain necessary if policy must survive workflow tampering
