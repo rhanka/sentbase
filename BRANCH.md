@@ -53,7 +53,11 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 - `attention` Lot 2: `make check ENV=test-harness-adopt` fails at Clippy in
   `crates/opendb-storage/src/wal.rs`: `clippy::type_complexity` at line 175 and
   `clippy::unnecessary_cast` at lines 911, 965, 1017. Engine changes are forbidden;
-  baseline reproduction is in progress. The other gates pass with `make -k check ENV=test-harness-adopt`.
+  reproduced on an unmodified `git archive main` snapshot (main `b1a8f1f`) with
+  `make -C tmp/main-baseline -f ../../Makefile clippy ENV=test-harness-baseline`.
+  Owner: engine maintainer; bounded fix: these warnings; acceptance: `make clippy` passes.
+  Other gates pass with `make -k check ENV=test-harness-adopt` (331 Rust + 38 Vitest tests).
+- Toolchain licenses: official Node (MIT), Rust (MIT OR Apache-2.0); no new package dependency.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
@@ -72,6 +76,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
   - [ ] Lot gate: `make check` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
+  - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
   - [ ] Workflow: attribution guard on the PR range, no-python, lint, tests; tested-artifact receipt for the image.
   - [ ] Lot gate: CI green on the PR.
 - [ ] **Lot 4 — Track (BR01-EX4)**
