@@ -30,6 +30,10 @@ const MAX_RAFT_RPC_FRAME_LEN: usize = 16 * 1024 * 1024;
 const RAFT_STORE_VERSION: u16 = 1;
 const RAFT_STORE_FILE: &str = "raft-state.json";
 
+type LeaderCheckError =
+    RaftError<OpenDbRaftNodeId, CheckIsLeaderError<OpenDbRaftNodeId, BasicNode>>;
+type RaftRpcError = RPCError<OpenDbRaftNodeId, BasicNode, RaftError<OpenDbRaftNodeId>>;
+
 openraft::declare_raft_types!(
     RootRangeTypeConfig:
         D = RootRangeCommand,
@@ -129,11 +133,12 @@ impl RootRangeRaftHarness {
         self.raft.current_leader().await == Some(node_id)
     }
 
-    pub(crate) async fn ensure_linearizable_leader(
-        &self,
-    ) -> Result<(), RaftError<OpenDbRaftNodeId, CheckIsLeaderError<OpenDbRaftNodeId, BasicNode>>>
-    {
-        self.raft.ensure_linearizable().await.map(|_| ())
+    pub(crate) async fn ensure_linearizable_leader(&self) -> Result<(), Box<LeaderCheckError>> {
+        self.raft
+            .ensure_linearizable()
+            .await
+            .map(|_| ())
+            .map_err(Box::new)
     }
 
     #[cfg(test)]
@@ -388,7 +393,7 @@ impl RootRangeRaftStoreState {
         &self,
         subject: ErrorSubject<OpenDbRaftNodeId>,
         verb: ErrorVerb,
-    ) -> Result<(), StorageError<OpenDbRaftNodeId>> {
+    ) -> Result<(), Box<StorageError<OpenDbRaftNodeId>>> {
         let persisted = PersistedRootRangeRaftStoreState {
             version: RAFT_STORE_VERSION,
             logs: self.logs.clone(),
@@ -403,7 +408,7 @@ impl RootRangeRaftStoreState {
 
         write_json_file_atomic(&self.state_path, &persisted)
             .await
-            .map_err(|err| Self::storage_error(subject, verb, err))
+            .map_err(|err| Box::new(Self::storage_error(subject, verb, err)))
     }
 
     fn storage_error(
@@ -439,7 +444,7 @@ impl RootRangeRaftStoreState {
         &mut self,
         entry: &Entry<RootRangeTypeConfig>,
         command: &RootRangeCommand,
-    ) -> Result<(), StorageError<OpenDbRaftNodeId>> {
+    ) -> Result<(), Box<StorageError<OpenDbRaftNodeId>>> {
         let records = self
             .root_range
             .replay()
@@ -449,14 +454,14 @@ impl RootRangeRaftStoreState {
         match records.get(self.applied_normal_count) {
             Some(existing) if existing == &command.record => {}
             Some(existing) => {
-                return Err(Self::storage_error(
+                return Err(Box::new(Self::storage_error(
                     ErrorSubject::Apply(entry.log_id),
                     ErrorVerb::Write,
                     format!(
                         "root range WAL record {} differs from raft log {}: existing {:?}, proposed {:?}",
                         self.applied_normal_count, entry.log_id, existing, command.record
                     ),
-                ));
+                )));
             }
             None if records.len() == self.applied_normal_count => {
                 self.root_range
@@ -465,7 +470,7 @@ impl RootRangeRaftStoreState {
                     .map_err(|err| Self::apply_error(entry.log_id, err))?;
             }
             None => {
-                return Err(Self::storage_error(
+                return Err(Box::new(Self::storage_error(
                     ErrorSubject::Apply(entry.log_id),
                     ErrorVerb::Write,
                     format!(
@@ -473,7 +478,7 @@ impl RootRangeRaftStoreState {
                         records.len(),
                         self.applied_normal_count
                     ),
-                ));
+                )));
             }
         }
 
@@ -570,7 +575,10 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
     ) -> Result<(), StorageError<OpenDbRaftNodeId>> {
         let mut state = self.state.0.lock().await;
         state.vote = Some(*vote);
-        state.persist(ErrorSubject::Vote, ErrorVerb::Write).await?;
+        state
+            .persist(ErrorSubject::Vote, ErrorVerb::Write)
+            .await
+            .map_err(|err| *err)?;
         Ok(())
     }
 
@@ -586,7 +594,10 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
     ) -> Result<(), StorageError<OpenDbRaftNodeId>> {
         let mut state = self.state.0.lock().await;
         state.committed = committed;
-        state.persist(ErrorSubject::Store, ErrorVerb::Write).await?;
+        state
+            .persist(ErrorSubject::Store, ErrorVerb::Write)
+            .await
+            .map_err(|err| *err)?;
         Ok(())
     }
 
@@ -618,7 +629,10 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
         for entry in entries {
             state.logs.insert(entry.log_id.index, entry);
         }
-        state.persist(ErrorSubject::Logs, ErrorVerb::Write).await?;
+        state
+            .persist(ErrorSubject::Logs, ErrorVerb::Write)
+            .await
+            .map_err(|err| *err)?;
         Ok(())
     }
 
@@ -630,7 +644,8 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
         state.logs.retain(|index, _| *index < log_id.index);
         state
             .persist(ErrorSubject::Log(log_id), ErrorVerb::Delete)
-            .await?;
+            .await
+            .map_err(|err| *err)?;
         Ok(())
     }
 
@@ -643,7 +658,8 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
         state.last_purged_log_id = Some(log_id);
         state
             .persist(ErrorSubject::Log(log_id), ErrorVerb::Delete)
-            .await?;
+            .await
+            .map_err(|err| *err)?;
         Ok(())
     }
 
@@ -678,7 +694,8 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
                     state.last_applied = Some(entry.log_id);
                     state
                         .persist(ErrorSubject::Apply(entry.log_id), ErrorVerb::Write)
-                        .await?;
+                        .await
+                        .map_err(|err| *err)?;
                     responses.push(RootRangeResponse::Noop);
                 }
                 EntryPayload::Membership(membership) => {
@@ -687,15 +704,20 @@ impl RaftStorage<RootRangeTypeConfig> for RootRangeRaftStore {
                     state.last_applied = Some(entry.log_id);
                     state
                         .persist(ErrorSubject::Apply(entry.log_id), ErrorVerb::Write)
-                        .await?;
+                        .await
+                        .map_err(|err| *err)?;
                     responses.push(RootRangeResponse::Noop);
                 }
                 EntryPayload::Normal(command) => {
-                    state.apply_normal_entry(entry, command).await?;
+                    state
+                        .apply_normal_entry(entry, command)
+                        .await
+                        .map_err(|err| *err)?;
                     state.last_applied = Some(entry.log_id);
                     state
                         .persist(ErrorSubject::Apply(entry.log_id), ErrorVerb::Write)
-                        .await?;
+                        .await
+                        .map_err(|err| *err)?;
                     responses.push(RootRangeResponse::Applied);
                 }
             }
@@ -771,10 +793,7 @@ impl TcpRaftNetwork {
     async fn call(
         &self,
         request: RootRangeRaftRpcRequest,
-    ) -> Result<
-        RootRangeRaftRpcResponse,
-        RPCError<OpenDbRaftNodeId, BasicNode, RaftError<OpenDbRaftNodeId>>,
-    > {
+    ) -> Result<RootRangeRaftRpcResponse, Box<RaftRpcError>> {
         let mut stream = TcpStream::connect(&self.node.addr)
             .await
             .map_err(|err| self.network_error(err))?;
@@ -784,6 +803,7 @@ impl TcpRaftNetwork {
         read_json_frame(&mut stream)
             .await
             .map_err(|err| self.network_error(std::io::Error::other(err.to_string())))
+            .map_err(Box::new)
     }
 
     fn network_error<E>(
@@ -850,7 +870,7 @@ impl RaftNetwork<RootRangeTypeConfig> for TcpRaftNetwork {
             return Err(self.append_payload_too_large(payload_len, entries_len));
         }
 
-        match self.call(request).await? {
+        match self.call(request).await.map_err(|err| *err)? {
             RootRangeRaftRpcResponse::AppendEntries(Ok(response)) => Ok(response),
             RootRangeRaftRpcResponse::AppendEntries(Err(err)) => Err(self.remote_error(err)),
             _ => Err(self.unexpected_response("unexpected append_entries response")),
@@ -868,7 +888,7 @@ impl RaftNetwork<RootRangeTypeConfig> for TcpRaftNetwork {
         let response = self
             .call(RootRangeRaftRpcRequest::InstallSnapshot(Box::new(rpc)))
             .await
-            .map_err(|err| match err {
+            .map_err(|err| match *err {
                 RPCError::Timeout(err) => RPCError::Timeout(err),
                 RPCError::Unreachable(err) => RPCError::Unreachable(err),
                 RPCError::PayloadTooLarge(err) => RPCError::PayloadTooLarge(err),
@@ -891,7 +911,11 @@ impl RaftNetwork<RootRangeTypeConfig> for TcpRaftNetwork {
         VoteResponse<OpenDbRaftNodeId>,
         RPCError<OpenDbRaftNodeId, BasicNode, RaftError<OpenDbRaftNodeId>>,
     > {
-        match self.call(RootRangeRaftRpcRequest::Vote(rpc)).await? {
+        match self
+            .call(RootRangeRaftRpcRequest::Vote(rpc))
+            .await
+            .map_err(|err| *err)?
+        {
             RootRangeRaftRpcResponse::Vote(Ok(response)) => Ok(response),
             RootRangeRaftRpcResponse::Vote(Err(err)) => Err(self.remote_error(err)),
             _ => Err(self.unexpected_response("unexpected vote response")),
