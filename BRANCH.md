@@ -103,6 +103,8 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Astra 8; Argon P0-3 | P2 / P0 | fixed | EX6: MIT in workspace and npm manifests; `make check-license` validates all six packages through containerized Cargo metadata. No dependency/lockfile edit. |
 | Astra 5 (implementation); Argon P0-1 (CI) | P1 / P0 | fixed | Base-revision checker reads commit objects; explicit bootstrap fallback; all-branch push and merge_group triggers; PR metadata checked; CODEOWNERS added. Independent required-workflow enforcement remains an owner acceptance item below. |
 | Argon P2-3 (credentials) | P2 | fixed | Every checkout sets `persist-credentials: false`. |
+| Argon P1-1; Astra scope note | P1 | fixed | Containerized harness 0.4.0 API consumes project profile; staged/unstaged/untracked and branch range checked in commit/check/CI. Tests reject absent harness, invalid range and clean-but-out-of-scope branch commits. |
+| Astra 4 (local push); Argon P2-2 (push) | P1 / P2 | fixed | Push requires an outgoing-range attribution scan, rejects detached HEAD/main, uses explicit branch refspec. No push executed. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
@@ -114,7 +116,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
   - [x] `tools/check-attribution.sh` + `.githooks/commit-msg`; tested: rejects a `Co-Authored-By` AI trailer and AI identities, passes the rewritten history.
   - [x] Makefile workflow targets (BR01-EX1); `LICENSE` MIT (BR01-EX2).
   - [x] `.claude/settings.json`: disable agent co-author attribution at the source.
-  - [ ] `harness.profile.json` is declared but the host `harness` CLI only loads built-in profiles (`sentropic|stub`): `make scope-check` runs `--profile sentropic` until custom profiles are supported (request to the harness maintainer).
+  - [x] `make scope-check` consumes `harness.profile.json` through the pinned containerized harness API.
   - [ ] Lot gate: `make check-attribution` + `make check-no-python` + `make scope-check`.
 - [x] **Lot 2 — Docker-first toolchain**
   - [x] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
