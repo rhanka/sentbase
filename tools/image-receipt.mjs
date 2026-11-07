@@ -13,7 +13,7 @@ export function createReceipt(context, needs, metadata, imageId) {
     throw Error('Missing or inconsistent workflow identity');
   }
   if (!digest.test(metadata['containerimage.digest'] ?? '') || !digest.test(imageId ?? '')
-    || metadata['containerimage.config.digest'] !== imageId) {
+    || ![metadata['containerimage.digest'], metadata['containerimage.config.digest']].includes(imageId)) {
     throw Error('Invalid digest or loaded image does not match build metadata');
   }
   for (const job of requiredJobs) {

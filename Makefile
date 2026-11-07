@@ -14,12 +14,14 @@ NODE_BIN := $(WORKTREE)/target/debug/opendb-node
 # stable channel in rust-toolchain.toml. Both official images use Bookworm.
 RUST_IMAGE := rust:bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
 NODE_IMAGE := node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40
+MUSL_IMAGE := rust:alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383
 export BUILDX_CONFIG := $(WORKTREE)/tmp/toolchain/buildx
 TOOLCHAIN_IMAGE := sentbase-toolchain:v1-$(shell printf '%s' '$(RUST_IMAGE) $(NODE_IMAGE)' | sha256sum | cut -c1-16)
-TOOLCHAIN_RUN = docker run --rm --init --user "$$(id -u):$$(id -g)" \
+DOCKER_RUN = docker run --rm --init --user "$$(id -u):$$(id -g)" \
 	-v "$(WORKTREE):/workspace" -w /workspace -e HOME=/tmp \
 	-e CARGO_HOME=/workspace/tmp/toolchain/target/cargo \
-	-e npm_config_cache=/workspace/tmp/toolchain/npm $(TOOLCHAIN_IMAGE) \
+	-e npm_config_cache=/workspace/tmp/toolchain/npm
+TOOLCHAIN_RUN = $(DOCKER_RUN) $(TOOLCHAIN_IMAGE) \
 	sh -ec 'export RUSTUP_TOOLCHAIN="$$(rustup default | cut -d" " -f1)"; exec "$$@"' --
 
 .DEFAULT_GOAL := help
@@ -130,10 +132,14 @@ hooks: ## Git: install the repo hooks (core.hooksPath=.githooks, attribution gua
 	@$(GIT) config core.hooksPath .githooks
 	@echo "hooks: core.hooksPath=.githooks"
 
-ATTRIBUTION_RANGE ?= HEAD
+export ATTRIBUTION_RANGE ?= HEAD
 .PHONY: check-attribution
 check-attribution: ## Check: refuse AI/agent attribution in commits (ATTRIBUTION_RANGE=origin/main..HEAD)
-	@sh tools/check-attribution.sh $(ATTRIBUTION_RANGE)
+	@sh tools/check-attribution.sh "$$ATTRIBUTION_RANGE"
+
+.PHONY: ci-source
+ci-source: ## Check: record the checked-out SHA after a successful CI gate
+	@printf 'sha=%s\n' "$$($(GIT) rev-parse HEAD)" >> "$${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
 .PHONY: scope-check
 scope-check: ## Check: C2 scope of local changes (staged+unstaged) vs BRANCH.md, via host harness
@@ -178,9 +184,24 @@ poc-seed: ## Sprint 18.B: migrations + seed minimal Drizzle (workspaces/orgs/fol
 poc-http: ## Sprint 18.C: HTTP route /api/folders bout-en-bout sur opendb-node
 	cd $(WORKTREE) && $(NPM) run poc:sentropic:http
 
-.PHONY: poc-image
-poc-image: poc-musl ## Sprint 19.C.2: docker build static-musl alpine image (opendb-node:poc-local)
-	cd $(WORKTREE) && docker build -t opendb-node:poc-local -f Dockerfile.alpine .
+IMAGE_TAG ?= opendb-node:poc-local
+.PHONY: image poc-image image-receipt verify-image-receipt
+image: poc-image ## Build and smoke-test Dockerfile.alpine with a static musl binary
+poc-image: poc-musl ## Build the Alpine runtime using only its Dockerfile and binary as context
+	@mkdir -p "$(WORKTREE)/tmp/ci"
+	@set -o pipefail; tar -cf - Dockerfile.alpine target/x86_64-unknown-linux-musl/release/opendb-node | \
+	  docker buildx build --load -t $(IMAGE_TAG) --metadata-file tmp/ci/image-metadata.json -f Dockerfile.alpine -
+	@docker image inspect $(IMAGE_TAG) --format '{{.Id}}' > tmp/ci/image-id
+	docker run --rm --user "$$(id -u):$$(id -g)" "$$(cat tmp/ci/image-id)" --help
+
+RECEIPT_RUN = $(DOCKER_RUN) -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_WORKFLOW \
+	-e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CI_NEEDS -e SOURCE_SHA="$$($(GIT) rev-parse HEAD)" \
+	$(TOOLCHAIN_IMAGE) node tools/image-receipt.mjs
+RECEIPT_FILES := tmp/ci/image-receipt.json tmp/ci/image-metadata.json tmp/ci/image-id
+image-receipt: image ## Check successful same-SHA jobs and write the tested image receipt
+	$(RECEIPT_RUN) write $(RECEIPT_FILES)
+verify-image-receipt: toolchain ## Check the image receipt against this workflow run and build metadata
+	$(RECEIPT_RUN) verify $(RECEIPT_FILES)
 
 .PHONY: poc-bench
 poc-bench: ## Sprint 20: side-by-side latency bench opendb-node vs postgres:16-alpine
@@ -191,8 +212,9 @@ poc-bench-concurrent: ## Phase B prep: multi-client concurrent INSERT+SELECT ben
 	cd $(WORKTREE) && $(NPM) run poc:sentropic:bench-concurrent
 
 .PHONY: poc-musl
-poc-musl: ## Sprint 19.C.1: cargo build --release --target x86_64-unknown-linux-musl (no docker)
-	cd $(WORKTREE) && CC=musl-gcc $(CARGO) build --release --target x86_64-unknown-linux-musl -p opendb-node
+poc-musl: toolchain ## Build the static musl binary in a pinned Rust Alpine image
+	$(DOCKER_RUN) $(MUSL_IMAGE) sh -ec \
+	  'export RUSTUP_TOOLCHAIN="$$(rustup default | cut -d" " -f1)"; exec cargo build --release --target x86_64-unknown-linux-musl -p opendb-node --locked'
 
 .PHONY: smoke-k3s
 smoke-k3s: ## Run the k3s cluster smoke (non-destructive default)
