@@ -1,5 +1,5 @@
 {
-  "id": "opendb",
+  "id": "sentbase",
   "forbiddenPathDefaults": [
     "Makefile",
     "docker-compose*.yml",
