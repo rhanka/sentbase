@@ -13,10 +13,10 @@ NODE_BIN := $(WORKTREE)/target/debug/opendb-node
 
 # Resolved with docker buildx imagetools inspect; rust:bookworm tracks the
 # stable channel in rust-toolchain.toml. Both official images use Bookworm.
-RUST_IMAGE := rust:bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
-NODE_IMAGE := node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40
-MUSL_IMAGE := rust:alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383
-ACTIONLINT_IMAGE := rhysd/actionlint:latest@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+RUST_IMAGE := $(shell awk '/^FROM .* AS rust$$/ { print $$2 }' tools/Dockerfile.pins)
+NODE_IMAGE := $(shell awk '/^FROM .* AS node$$/ { print $$2 }' tools/Dockerfile.pins)
+MUSL_IMAGE := $(shell awk '/^FROM .* AS musl$$/ { print $$2 }' tools/Dockerfile.pins)
+ACTIONLINT_IMAGE := $(shell awk '/^FROM .* AS actionlint$$/ { print $$2 }' tools/Dockerfile.pins)
 export BUILDX_CONFIG := $(WORKTREE)/tmp/toolchain/buildx
 TOOLCHAIN_IMAGE := sentbase-toolchain:v1-$(shell printf '%s' '$(RUST_IMAGE) $(NODE_IMAGE)' | sha256sum | cut -c1-16)
 DOCKER_RUN = docker run --rm --init --user "$$(id -u):$$(id -g)" \
