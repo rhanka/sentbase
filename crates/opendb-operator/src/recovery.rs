@@ -63,6 +63,8 @@ pub fn summarize_fetch_error(error: &FetchError) -> FetchErrorSummary {
 
 #[async_trait::async_trait]
 pub trait RecoveryStatusFetcher: Send + Sync {
+    // async_trait adds #[must_use] to a future that already carries the attribute.
+    #[allow(clippy::double_must_use)]
     async fn fetch(
         &self,
         pod_name: &str,

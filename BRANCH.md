@@ -88,6 +88,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [x] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
   - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
   - [x] BR01-EX5 consensus: box large errors in internal Raft helpers; preserve public OpenRaft trait signatures.
+  - [x] BR01-EX5 operator: scope `double_must_use` suppression to `fetch`; async_trait generates the redundant attribute.
   - [ ] Lot gate: `make check` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
   - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
