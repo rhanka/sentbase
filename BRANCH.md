@@ -53,13 +53,20 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 - `BR01-EX5` Engine lint debt: `make clippy` (-D warnings) fails on `main` (~22 errors in wal.rs, raft.rs,
   recovery.rs, executor.rs, parser.rs). Fix them without behaviour change so CI can be green. Impact: engine
   source, lint-only; all Rust tests must still pass. Rollback: revert the commits.
-- `attention` Lot 2: `make check ENV=test-harness-adopt` fails at Clippy in
-  `crates/opendb-storage/src/wal.rs`: `clippy::type_complexity` at line 175 and
-  `clippy::unnecessary_cast` at lines 911, 965, 1017. Engine changes are forbidden;
-  reproduced on an unmodified `git archive main` snapshot (main `b1a8f1f`) with
-  `make -C tmp/main-baseline -f ../../Makefile clippy ENV=test-harness-baseline`.
-  Owner: engine maintainer; bounded fix: these warnings; acceptance: `make clippy` passes.
-  Other gates pass with `make -k check ENV=test-harness-adopt` (331 Rust + 38 Vitest tests).
+- `attention` SQL parser: `parse_column_type_tokens` consumes only `CHARACTER`, so
+  `CREATE TABLE t (label CHARACTER VARYING)` fails with `unsupported column constraint on label`.
+  The shadowed two-token arm was unreachable and has been removed without changing this behaviour.
+  Owner: SQL maintainer; bounded fix: recognize and consume `CHARACTER VARYING` before the generic text
+  arm; acceptance: that CREATE TABLE succeeds with a Text column and bare CHARACTER still works;
+  verification: focused parser tests plus `make test-sql ENV=test-harness-adopt`.
+- Lot 2 outcome (BR01-EX5): engine Clippy debt is resolved without behaviour changes.
+  `make clippy ENV=test-harness-adopt` passes with `--workspace --all-targets --locked -- -D warnings`.
+  `make test ENV=test-harness-adopt`, `make fmt-check ENV=test-harness-adopt` and
+  `make -k check ENV=test-harness-adopt` all exit 0 (330 Rust, 38 Vitest, 5 image-receipt tests).
+  Rust previously counted 331 tests because `debug_comments_table` had duplicate `#[test]` attributes.
+  Raft helpers box their large errors; no `allow(clippy::result_large_err)` is used.
+  The only new allow is `clippy::double_must_use` on `RecoveryStatusFetcher::fetch`, because
+  async_trait generates a redundant `#[must_use]` attribute on its already-must-use future.
 - Toolchain licenses: official Node (MIT), Rust (MIT OR Apache-2.0), actionlint (MIT); no new package dependency.
 - Image validation: `make image ENV=test-harness-adopt` builds `Dockerfile.alpine` and runs its immutable
   image ID with `--help`. Receipt CLI write/verify passed against that build using the explicit local
@@ -84,13 +91,14 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [x] `.claude/settings.json`: disable agent co-author attribution at the source.
   - [ ] `harness.profile.json` is declared but the host `harness` CLI only loads built-in profiles (`sentropic|stub`): `make scope-check` runs `--profile sentropic` until custom profiles are supported (request to the harness maintainer).
   - [ ] Lot gate: `make check-attribution` + `make check-no-python` + `make scope-check`.
-- [ ] **Lot 2 — Docker-first toolchain**
+- [x] **Lot 2 — Docker-first toolchain**
   - [x] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
   - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
   - [x] BR01-EX5 consensus: box large errors in internal Raft helpers; preserve public OpenRaft trait signatures.
   - [x] BR01-EX5 operator: scope `double_must_use` suppression to `fetch`; async_trait generates the redundant attribute.
   - [x] BR01-EX5 SQL executor: mechanical aggregate lint fixes; remove obsolete `project_joined_row` (multi-join execution builds and pads rows directly).
-  - [ ] Lot gate: `make check` green in containers.
+  - [x] BR01-EX5 SQL parser: collapse conditions and remove the duplicate test attribute; record the existing CHARACTER VARYING gap above.
+  - [x] Lot gate: `make -k check ENV=test-harness-adopt` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
   - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
   - [x] Docker-only musl build, Alpine image smoke test, and Make entry points for receipt write/verify.
