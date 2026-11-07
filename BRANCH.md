@@ -98,6 +98,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Argon P1-5 | P1 | fixed | Scope reflects touched files; EX6 declared; Track remains unchecked. ENV isolation and final gate evidence follow below. |
 | Astra 1, 2, 3; Argon P0-1 (local policy) | P1 / P0 | fixed | Shared identifiers, effective hook identities, checked Git/message reads; regression suite follows. All bots, including dependabot, require human re-authorship; no unverifiable dependency-only exception. |
 | Attribution regression coverage | P1 | fixed | `make test-attribution`: marker vocabulary, human discussion, both identities, config overrides, commit objects, read/Git/grep failures. |
+| Argon P1-3 | P1 | fixed | Raw MSG exported; file-based commit, single-line validation, signing disabled for headless commits; quotes/dollars/backticks/backslashes tested. SQL/PATTERN transport corrected with operational targets. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**

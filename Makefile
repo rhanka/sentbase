@@ -161,12 +161,14 @@ scope-check: harness-tool ## Check: branch range plus staged/unstaged/untracked 
 	$(DOCKER_RUN) -v "$$($(GIT) rev-parse --path-format=absolute --git-common-dir):$$($(GIT) rev-parse --path-format=absolute --git-common-dir):ro" \
 	  -e CI -e SCOPE_RANGE $(TOOLCHAIN_IMAGE) node tools/scope-check.mjs
 
-.PHONY: commit
-commit: ## Git: commit the STAGED files with MSG="type: message" (never stages; hook enforced)
-	@if [ -z "$(MSG)" ]; then echo "MSG is required: make commit MSG=\"feat: ...\""; exit 1; fi
-	@if [ "$$($(GIT) config core.hooksPath)" != ".githooks" ]; then echo "Run 'make hooks' first (attribution guard not installed)"; exit 1; fi
-	@if $(GIT) diff --cached --quiet; then echo "Nothing staged: git add <specific-files> first (never add -A)"; exit 1; fi
-	$(GIT) commit -m "$$(printf "%b" "$(MSG)")"
+# Preserve command-line dollars as data, including Make function syntax.
+override export MSG := $(value MSG)
+.PHONY: commit test-workflow
+commit: $(if $(wildcard BRANCH.md),scope-check) ## Git: commit staged files with a literal single-line MSG
+	@sh tools/commit.sh
+
+test-workflow: toolchain ## Test literal commit messages and scope failure handling
+	$(TOOLCHAIN_RUN) node --test tools/workflow.test.mjs
 
 .PHONY: push
 push: ## Git: push the current branch (never main; main changes go through PRs)
