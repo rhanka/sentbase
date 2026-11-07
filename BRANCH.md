@@ -6,7 +6,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 
 ## Scope / Guardrails
 - Scope limited to governance files, the attribution guard, Makefile workflow targets and CI bootstrap.
-- No engine code change (`crates/**` untouched). Make-only; worktree `tmp/chore-harness-adopt`.
+- No engine behaviour change: `crates/**` only for lint-only fixes under BR01-EX5. Make-only; worktree `tmp/chore-harness-adopt`.
 - Built on `purge/main-rewritten` (6 AI-authored commits re-authored, trees identical); rebased onto `main`
   if the owner does not approve the force-push.
 - Zero Python. All new text in English.
@@ -28,7 +28,6 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `.gitignore`
   - `README.md`
 - **Forbidden Paths (must not change in this branch)**:
-  - `crates/**`
   - `Cargo.toml`
   - `Cargo.lock`
 - **Conditional Paths (allowed only with explicit exception when not already listed in Allowed Paths)**:
@@ -36,6 +35,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `LICENSE` (BR01-EX2)
   - `.github/workflows/**` (BR01-EX3)
   - `.track/**` (BR01-EX4)
+  - `crates/**/*.rs` (BR01-EX5, lint-only)
 - **Exception process**:
   - Declare exception ID `BRxx-EXn` in `## Feedback Loop` before touching any conditional/forbidden path.
 
@@ -50,6 +50,9 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 - `BR01-EX3` CI: add a first GitHub Actions workflow (attribution guard, no-python, lint, tests, TS,
   image receipt) and weekly Dependabot updates. Impact: validation only, no publication. Rollback: revert.
 - `BR01-EX4` Track: `track init` for opendb realization state. Rollback: revert.
+- `BR01-EX5` Engine lint debt: `make clippy` (-D warnings) fails on `main` (~22 errors in wal.rs, raft.rs,
+  recovery.rs, executor.rs, parser.rs). Fix them without behaviour change so CI can be green. Impact: engine
+  source, lint-only; all Rust tests must still pass. Rollback: revert the commits.
 - `attention` Lot 2: `make check ENV=test-harness-adopt` fails at Clippy in
   `crates/opendb-storage/src/wal.rs`: `clippy::type_complexity` at line 175 and
   `clippy::unnecessary_cast` at lines 911, 965, 1017. Engine changes are forbidden;
