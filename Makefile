@@ -144,6 +144,10 @@ export ATTRIBUTION_RANGE ?= HEAD
 check-attribution: ## Check: refuse AI/agent attribution in commits (ATTRIBUTION_RANGE=origin/main..HEAD)
 	@sh tools/check-attribution.sh "$$ATTRIBUTION_RANGE"
 
+.PHONY: test-attribution
+test-attribution: toolchain ## Test attribution markers, identities and inspection errors
+	$(TOOLCHAIN_RUN) node --test tools/check-attribution.test.mjs
+
 .PHONY: ci-source
 ci-source: ## Check: record the checked-out SHA after a successful CI gate
 	@printf 'sha=%s\n' "$$($(GIT) rev-parse HEAD)" >> "$${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
