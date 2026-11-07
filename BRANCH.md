@@ -89,6 +89,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
   - [x] BR01-EX5 consensus: box large errors in internal Raft helpers; preserve public OpenRaft trait signatures.
   - [x] BR01-EX5 operator: scope `double_must_use` suppression to `fetch`; async_trait generates the redundant attribute.
+  - [x] BR01-EX5 SQL executor: mechanical aggregate lint fixes; remove obsolete `project_joined_row` (multi-join execution builds and pads rows directly).
   - [ ] Lot gate: `make check` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
   - [x] Single image-receipt writer/verifier with negative tests (`make test-image-receipt ENV=test-harness-adopt`).
