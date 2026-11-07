@@ -65,6 +65,9 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   `GITHUB_RUN_ATTEMPT=2` correctly fails with `Image receipt does not match this image, SHA, run and attempt`.
 - `attention` Lot 3: remote CI is unverified because pushing/opening a PR is forbidden in this task.
   Owner: conductor; acceptance: all CI jobs pass on the PR after the engine Clippy warnings are resolved.
+- `attention` Review: peer selection is pending exact author model/effort metadata (the handoff only
+  names Sol); the review skill refuses unknown author metadata. Owner: conductor; acceptance: two eligible
+  completed peer reviews. Local dossier: `tmp/lot-2-3-review.md`; no consensus verdict is claimed.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
@@ -87,6 +90,7 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [x] Docker-only musl build, Alpine image smoke test, and Make entry points for receipt write/verify.
   - [x] Workflow: attribution guard on the PR range, no-python, lint, tests, TS; tested-artifact receipt for the image.
   - [x] `make check-ci ENV=test-harness-adopt`: actionlint passes; all actions pinned to full commit SHAs.
+  - [x] Weekly Dependabot updates for npm, cargo, docker and github-actions.
   - [ ] Lot gate: CI green on the PR.
 - [ ] **Lot 4 — Track (BR01-EX4)**
   - [ ] `track init`; import this `BRANCH.md`; workpackages from `docs/roadmap` (WP1–WP7).
