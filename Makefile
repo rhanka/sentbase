@@ -276,22 +276,22 @@ bench-fk: ## FK insert/delete bench
 
 OPENDB_PGWIRE_PORT ?= 25432
 OPENDB_HEALTH_PORT ?= 28080
-OPENDB_DATA_DIR    ?= $(WORKTREE)/tmp/opendb-local
+OPENDB_DATA_DIR    ?= $(WORKTREE)/tmp/opendb-$(ENV)
+OPENDB_CONTAINER   ?= sentbase-$(ENV)
 
 .PHONY: db-up
-db-up: build ## Spawn a local opendb-node on $(OPENDB_PGWIRE_PORT) (background)
-	@mkdir -p $(OPENDB_DATA_DIR)
-	@pkill -f 'opendb-node.*--pgwire-addr=127.0.0.1:$(OPENDB_PGWIRE_PORT)' 2>/dev/null || true
-	$(NODE_BIN) --node-id 1 \
-	  --data-dir $(OPENDB_DATA_DIR) \
-	  --pgwire-addr 127.0.0.1:$(OPENDB_PGWIRE_PORT) \
-	  --health-addr 127.0.0.1:$(OPENDB_HEALTH_PORT) > $(WORKTREE)/tmp/opendb-local.log 2>&1 &
-	@sleep 1
-	@echo "opendb-node up on pgwire 127.0.0.1:$(OPENDB_PGWIRE_PORT) (logs: $(WORKTREE)/tmp/opendb-local.log)"
+db-up: image db-down ## Spawn the pinned runtime container with explicit ownership and loopback ports
+	@mkdir -p "$(OPENDB_DATA_DIR)"
+	@docker run --rm --user 0 -v "$(OPENDB_DATA_DIR):/var/lib/opendb" --entrypoint sh \
+	  "$$(cat tmp/ci/image-id)" -ec 'chown opendb:opendb /var/lib/opendb'
+	docker run -d --name "$(OPENDB_CONTAINER)" -v "$(OPENDB_DATA_DIR):/var/lib/opendb" \
+	  -p "127.0.0.1:$(OPENDB_PGWIRE_PORT):5432" -p "127.0.0.1:$(OPENDB_HEALTH_PORT):8080" \
+	  "$$(cat tmp/ci/image-id)" --node-id 1
 
 .PHONY: db-down
 db-down: ## Stop the local opendb-node started by db-up
-	@pkill -f 'opendb-node.*--pgwire-addr=127.0.0.1:$(OPENDB_PGWIRE_PORT)' 2>/dev/null && echo "stopped" || echo "no opendb-node running on $(OPENDB_PGWIRE_PORT)"
+	@set -e; found="$$(docker ps -a --filter 'name=^/$(OPENDB_CONTAINER)$$' --format '{{.Names}}')"; \
+	  if [ -n "$$found" ]; then docker rm -f "$(OPENDB_CONTAINER)"; else echo 'No local DB container'; fi
 
 .PHONY: db-reset
 db-reset: db-down ## Stop opendb-node and wipe its data dir
@@ -299,9 +299,12 @@ db-reset: db-down ## Stop opendb-node and wipe its data dir
 	@echo "data dir $(OPENDB_DATA_DIR) cleared"
 
 .PHONY: db-query
-db-query: ## Run a one-shot SQL query against the local opendb-node: SQL="SELECT * FROM t"
-	@if [ -z "$(SQL)" ]; then echo "SQL is required: make db-query SQL=\"SELECT 1\""; exit 1; fi
-	cd $(WORKTREE) && OPENDB_PGWIRE_HOST=127.0.0.1 OPENDB_PGWIRE_PORT=$(OPENDB_PGWIRE_PORT) tsx tools/pgwire-exec.ts "$(SQL)"
+override export SQL := $(value SQL)
+db-query: npm-ci ## Query the local DB through the pinned Node toolchain: SQL="SELECT * FROM t"
+	@test -n "$$SQL" || { echo 'SQL is required'; exit 1; }
+	$(DOCKER_RUN) --network host -e SQL -e OPENDB_PGWIRE_HOST=127.0.0.1 \
+	  -e OPENDB_PGWIRE_PORT=$(OPENDB_PGWIRE_PORT) $(TOOLCHAIN_IMAGE) \
+	  sh -ec 'exec node --import tsx tools/pgwire-exec.ts "$$SQL"'
 
 .PHONY: db-status
 db-status: ## Check whether the local opendb-node is up
@@ -333,9 +336,10 @@ audit-sentropic-verbs: ## Drizzle verb usage histogram in sentropic src/
 	@printf "%-20s %5d\n" "groupBy/agg" "$$(grep -rE '\.groupBy\(|\.having\(|count\(|sum\(|max\(|min\(|avg\(' $(SENTROPIC_ROOT)/src --include='*.ts' 2>/dev/null | wc -l)"
 
 .PHONY: audit-sentropic-grep
+override export PATTERN := $(value PATTERN)
 audit-sentropic-grep: ## Generic grep over sentropic src: PATTERN="..."
-	@if [ -z "$(PATTERN)" ]; then echo "PATTERN is required: make audit-sentropic-grep PATTERN='SELECT'"; exit 1; fi
-	@grep -rE "$(PATTERN)" $(SENTROPIC_ROOT)/src --include='*.ts' 2>/dev/null | head -50
+	@test -n "$$PATTERN" || { echo 'PATTERN is required'; exit 1; }
+	@grep -rE --include='*.ts' -- "$$PATTERN" "$(SENTROPIC_ROOT)/src" | head -50
 
 .PHONY: cloc
 cloc: ## Count lines of code in the opendb workspace
