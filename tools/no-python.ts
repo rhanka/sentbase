@@ -7,6 +7,10 @@ const ignored = new Set([
   ".opendb-git",
   ".worktrees",
   "target",
+  "tmp",
+  ".cache",
+  ".npm",
+  ".cargo",
   "node_modules",
   ".superpowers",
   ".playwright-mcp"

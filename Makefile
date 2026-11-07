@@ -1,19 +1,30 @@
 SHELL := /bin/bash
 
-# OpenDB workflow targets. Mirrors `sentropic/Makefile` style: every target
-# has a `## comment` consumed by `make help`. Run targets from this worktree:
-#
-#   cd /home/antoinefa/src/opendb/.worktrees/feat-milestone-1 && make <target>
-#
-# All targets are designed to run without requiring per-command permission
-# prompts, by wrapping recurring patterns (cargo / git / npm / pg) under
-# `Bash(make *)` which is allow-listed in `.claude/settings.json`.
+# OpenDB workflow targets (sentropic harness, see rules/MASTER.md). Every target
+# has a `## comment` consumed by `make help`. Run targets from the root of the
+# checkout or of a `tmp/<slug>` worktree: `make <target>`.
 
-WORKTREE := /home/antoinefa/src/opendb/.worktrees/feat-milestone-1
+WORKTREE := $(CURDIR)
+ENV ?= test-harness-adopt
 CARGO    := cargo
 GIT      := git -C $(WORKTREE)
 NPM      := npm
 NODE_BIN := $(WORKTREE)/target/debug/opendb-node
+
+# Resolved with docker buildx imagetools inspect; rust:bookworm tracks the
+# stable channel in rust-toolchain.toml. Both official images use Bookworm.
+RUST_IMAGE := $(shell awk '/^FROM .* AS rust$$/ { print $$2 }' tools/Dockerfile.pins)
+NODE_IMAGE := $(shell awk '/^FROM .* AS node$$/ { print $$2 }' tools/Dockerfile.pins)
+MUSL_IMAGE := $(shell awk '/^FROM .* AS musl$$/ { print $$2 }' tools/Dockerfile.pins)
+ACTIONLINT_IMAGE := $(shell awk '/^FROM .* AS actionlint$$/ { print $$2 }' tools/Dockerfile.pins)
+export BUILDX_CONFIG := $(WORKTREE)/tmp/toolchain/buildx
+TOOLCHAIN_IMAGE := sentbase-toolchain:v1-$(shell printf '%s' '$(RUST_IMAGE) $(NODE_IMAGE)' | sha256sum | cut -c1-16)
+DOCKER_RUN = docker run --rm --init --user "$$(id -u):$$(id -g)" \
+	-v "$(WORKTREE):/workspace" -w /workspace -e HOME=/tmp \
+	-e CARGO_HOME=/workspace/tmp/toolchain/target/cargo \
+	-e npm_config_cache=/workspace/tmp/toolchain/npm
+TOOLCHAIN_RUN = $(DOCKER_RUN) $(TOOLCHAIN_IMAGE) \
+	sh -ec 'export RUSTUP_TOOLCHAIN="$$(rustup default | cut -d" " -f1)"; exec "$$@"' --
 
 .DEFAULT_GOAL := help
 
@@ -34,63 +45,92 @@ help: ## Show available targets
 
 # ----- Build / Test / Lint / Check ------------------------------------------
 
+.PHONY: toolchain npm-ci
+toolchain: ## Build the pinned Rust + Node toolchain (Docker is the only host toolchain)
+	@mkdir -p "$(WORKTREE)/tmp/toolchain/target/cargo" "$(WORKTREE)/tmp/toolchain/npm"
+	@docker image inspect $(TOOLCHAIN_IMAGE) >/dev/null 2>&1 || \
+	printf '%s\n' 'FROM $(NODE_IMAGE) AS node' 'FROM $(RUST_IMAGE)' \
+	  'RUN rustup component add clippy rustfmt' \
+	  'COPY --from=node /usr/local/bin/node /usr/local/bin/node' \
+	  'COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules' \
+	  'RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx' \
+	  | docker build -t $(TOOLCHAIN_IMAGE) -
+
+npm-ci: toolchain ## Install locked Node dependencies, including dev dependencies, in Docker
+	$(TOOLCHAIN_RUN) $(NPM) ci --include=dev
+
 .PHONY: build
-build: ## Build the full Rust workspace
-	cd $(WORKTREE) && $(CARGO) build --workspace
+build: toolchain ## Build the full Rust workspace
+	$(TOOLCHAIN_RUN) $(CARGO) build --workspace --locked
 
 .PHONY: build-release
-build-release: ## Build the Rust workspace in release mode
-	cd $(WORKTREE) && $(CARGO) build --workspace --release
+build-release: toolchain ## Build the Rust workspace in release mode
+	$(TOOLCHAIN_RUN) $(CARGO) build --workspace --release --locked
 
 .PHONY: test
-test: ## Run the full cargo test workspace
-	cd $(WORKTREE) && $(CARGO) test --workspace
+test: toolchain ## Run the full cargo test workspace
+	$(TOOLCHAIN_RUN) $(CARGO) test --workspace --locked
 
 .PHONY: test-storage
-test-storage: ## Run cargo tests for opendb-storage only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-storage
+test-storage: toolchain ## Run cargo tests for opendb-storage only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-storage --locked
 
 .PHONY: test-sql
-test-sql: ## Run cargo tests for opendb-sql only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-sql
+test-sql: toolchain ## Run cargo tests for opendb-sql only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-sql --locked
 
 .PHONY: test-node
-test-node: ## Run cargo tests for opendb-node only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-node
+test-node: toolchain ## Run cargo tests for opendb-node only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-node --locked
 
 .PHONY: fmt
-fmt: ## Apply rustfmt to the whole workspace
-	cd $(WORKTREE) && $(CARGO) fmt --all
+fmt: toolchain ## Apply rustfmt to the whole workspace
+	$(TOOLCHAIN_RUN) $(CARGO) fmt --all
 
 .PHONY: fmt-check
-fmt-check: ## Verify rustfmt has nothing to change
-	cd $(WORKTREE) && $(CARGO) fmt --all -- --check
+fmt-check: toolchain ## Verify rustfmt has nothing to change
+	$(TOOLCHAIN_RUN) $(CARGO) fmt --all -- --check
 
 .PHONY: clippy
-clippy: ## Run cargo clippy with -D warnings on the workspace
-	cd $(WORKTREE) && $(CARGO) clippy --workspace --all-targets -- -D warnings
+clippy: toolchain ## Run cargo clippy with -D warnings on the workspace
+	$(TOOLCHAIN_RUN) $(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 
 .PHONY: lint
 lint: fmt-check clippy ## fmt-check + clippy
 
+.PHONY: check-ci
+check-ci: ## Check GitHub Actions syntax and expressions with pinned actionlint
+	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(WORKTREE):/workspace:ro" \
+	  -w /workspace $(ACTIONLINT_IMAGE) -color .github/workflows/ci.yml
+
 .PHONY: check-ts
-check-ts: ## TypeScript typecheck (npm run check:ts)
-	cd $(WORKTREE) && $(NPM) run check:ts
+check-ts: npm-ci ## TypeScript typecheck (npm run check:ts)
+	$(TOOLCHAIN_RUN) $(NPM) run check:ts
 
 .PHONY: check-no-python
-check-no-python: ## Verify no Python file leaked into the repo
-	cd $(WORKTREE) && $(NPM) run check:no-python
+check-no-python: npm-ci ## Verify no Python file leaked into the repo
+	$(TOOLCHAIN_RUN) $(NPM) run check:no-python
 
 .PHONY: check-manifests
-check-manifests: ## Validate Kubernetes manifests
-	cd $(WORKTREE) && $(NPM) run check:manifests
+check-manifests: npm-ci ## Validate Kubernetes manifests
+	$(TOOLCHAIN_RUN) $(NPM) run check:manifests
 
 .PHONY: vitest
-vitest: ## Run all vitest suites (npm test)
-	cd $(WORKTREE) && $(NPM) test
+vitest: npm-ci build ## Run all vitest suites (npm test), including SQL parity's Cargo subprocess
+	$(TOOLCHAIN_RUN) $(NPM) test
+
+.PHONY: test-image-receipt
+test-image-receipt: toolchain ## Test image receipts against failed checks, stale SHAs and image substitution
+	$(TOOLCHAIN_RUN) node --test tools/image-receipt.test.mjs
 
 .PHONY: check
-check: lint test check-ts check-no-python check-manifests vitest ## Full check pipeline (lint + tests + npm checks + vitest)
+check: lint test check-ts check-no-python check-manifests vitest test-image-receipt test-attribution test-workflow check-license check-image-inputs check-ci scope-check ## Full check pipeline
+
+.PHONY: check-license
+check-license: toolchain ## Check every workspace package and the npm manifest declare MIT
+	@mkdir -p tmp/ci
+	@$(TOOLCHAIN_RUN) cargo metadata --no-deps --locked --format-version 1 > tmp/ci/license-metadata.json
+	@$(TOOLCHAIN_RUN) node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("tmp/ci/license-metadata.json")); if (!m.packages.length || m.packages.some(p => p.license !== "MIT") || require("./package.json").license !== "MIT") process.exit(1); console.log("license: MIT (" + m.packages.length + " Cargo packages and npm)");'
 
 # ----- Git workflow ---------------------------------------------------------
 
@@ -100,26 +140,54 @@ status: ## Show git status + recent log
 	@echo "---"
 	$(GIT) log --oneline -10
 
-.PHONY: ai-grep-check
-ai-grep-check: ## Count commits matching anthropic/claude/🤖 (must stay ≤1 baseline)
-	@$(GIT) log origin/main --grep="anthropic\|claude\|🤖" -i --oneline | wc -l
+.PHONY: hooks
+hooks: ## Git: install the repo hooks (core.hooksPath=.githooks, attribution guard)
+	@$(GIT) config core.hooksPath .githooks
+	@echo "hooks: core.hooksPath=.githooks"
 
-.PHONY: commit
-commit: ## Stage all + commit with MSG="..." (use ship to also push)
-	@if [ -z "$(MSG)" ]; then echo "MSG is required: make commit MSG=\"feat: ...\""; exit 1; fi
-	$(GIT) add -A
-	$(GIT) -c commit.gpgsign=false commit -m "$(MSG)"
+export ATTRIBUTION_RANGE ?= HEAD
+.PHONY: check-attribution
+check-attribution: ## Check: refuse AI/agent attribution in commits (ATTRIBUTION_RANGE=origin/main..HEAD)
+	@sh tools/check-attribution.sh "$$ATTRIBUTION_RANGE"
 
-.PHONY: push
-push: ## Push HEAD to origin/main
-	$(GIT) push origin HEAD:main
+.PHONY: test-attribution
+test-attribution: toolchain ## Test attribution markers, identities and inspection errors
+	$(TOOLCHAIN_RUN) node --test tools/check-attribution.test.mjs
 
-.PHONY: ship
-ship: ## Stage + commit + push in one shot with MSG="..."
-	@if [ -z "$(MSG)" ]; then echo "MSG is required: make ship MSG=\"feat: ...\""; exit 1; fi
-	$(GIT) add -A
-	$(GIT) -c commit.gpgsign=false commit -m "$(MSG)"
-	$(GIT) push origin HEAD:main
+.PHONY: ci-source
+ci-source: ## Check: record the checked-out SHA after a successful CI gate
+	@printf 'sha=%s\n' "$$($(GIT) rev-parse HEAD)" >> "$${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+
+.PHONY: harness-tool scope-check
+harness-tool: toolchain ## Install the exact harness CLI/API in the isolated tooling cache
+	@$(TOOLCHAIN_RUN) sh -ec 'node -e '\''if (require("./tmp/toolchain/harness/node_modules/@sentropic/harness/package.json").version !== "0.4.0") process.exit(1)'\'' 2>/dev/null || npm install --prefix tmp/toolchain/harness --no-package-lock --ignore-scripts --no-save @sentropic/harness@0.4.0'
+
+export SCOPE_RANGE ?= main...HEAD
+scope-check: harness-tool ## Check: branch range plus staged/unstaged/untracked against the project profile
+	$(DOCKER_RUN) -v "$$($(GIT) rev-parse --path-format=absolute --git-common-dir):$$($(GIT) rev-parse --path-format=absolute --git-common-dir):ro" \
+	  -e CI -e SCOPE_RANGE $(TOOLCHAIN_IMAGE) node tools/scope-check.mjs
+
+# Preserve command-line dollars as data, including Make function syntax.
+override export MSG := $(value MSG)
+.PHONY: commit test-workflow
+commit: $(if $(wildcard BRANCH.md),scope-check) ## Git: commit staged files with a literal single-line MSG
+	@sh tools/commit.sh
+
+test-workflow: harness-tool ## Test literal commit messages and scope failure handling
+	$(TOOLCHAIN_RUN) node --test tools/workflow.test.mjs
+
+.PHONY: check-push-attribution push
+check-push-attribution: ## Check: scan the exact outgoing branch range before push
+	@set -e; b="$$($(GIT) branch --show-current)"; \
+	  if [ -z "$$b" ] || [ "$$b" = main ]; then echo 'Refusing detached HEAD or main'; exit 1; fi; \
+	  ref="refs/remotes/origin/$$b"; \
+	  if $(GIT) show-ref --verify --quiet "$$ref"; then base="$$ref"; \
+	  else status=$$?; [ "$$status" -eq 1 ] || exit "$$status"; base=refs/remotes/origin/main; fi; \
+	  sh tools/check-attribution.sh "$$base..HEAD"
+push: check-push-attribution ## Git: push a scanned branch with an explicit refspec
+	@set -e; b="$$($(GIT) branch --show-current)"; \
+	  test -n "$$b" && test "$$b" != main; \
+	  $(GIT) push -u origin "refs/heads/$$b:refs/heads/$$b"
 
 .PHONY: diff
 diff: ## Show uncommitted diff
@@ -147,9 +215,33 @@ poc-seed: ## Sprint 18.B: migrations + seed minimal Drizzle (workspaces/orgs/fol
 poc-http: ## Sprint 18.C: HTTP route /api/folders bout-en-bout sur opendb-node
 	cd $(WORKTREE) && $(NPM) run poc:sentropic:http
 
-.PHONY: poc-image
-poc-image: poc-musl ## Sprint 19.C.2: docker build static-musl alpine image (opendb-node:poc-local)
-	cd $(WORKTREE) && docker build -t opendb-node:poc-local -f Dockerfile.alpine .
+IMAGE_TAG ?= opendb-node:$(ENV)
+.PHONY: check-image-inputs
+check-image-inputs: toolchain ## Check runtime and toolchain image pins without live package resolution
+	$(TOOLCHAIN_RUN) node tools/check-image-inputs.mjs
+.PHONY: image poc-image image-receipt verify-image-receipt
+image: poc-image ## Build and smoke-test Dockerfile.alpine with a static musl binary
+poc-image: poc-musl check-image-inputs ## Build the Alpine runtime using only its Dockerfile and binary as context
+	@mkdir -p "$(WORKTREE)/tmp/ci"
+	@set -o pipefail; tar -C "$(WORKTREE)" --sort=name --owner=0 --group=0 --numeric-owner \
+	  --mtime='UTC 1970-01-01' -cf - Dockerfile.alpine target/x86_64-unknown-linux-musl/release/opendb-node | \
+	  docker buildx build --load -t $(IMAGE_TAG) --metadata-file "$(WORKTREE)/tmp/ci/image-metadata.json" -f Dockerfile.alpine -
+	@docker image inspect $(IMAGE_TAG) --format '{{.Id}}' > "$(WORKTREE)/tmp/ci/image-id"
+	docker run --rm "$$(cat "$(WORKTREE)/tmp/ci/image-id")" --help
+
+.PHONY: image-integration
+image-integration: image npm-ci ## Test the exact image ID with SQL write/read and restart recovery
+	@TOOLCHAIN_IMAGE=$(TOOLCHAIN_IMAGE) SOURCE_SHA="$$($(GIT) rev-parse HEAD)" bash tools/image-integration.sh
+
+RECEIPT_RUN = $(DOCKER_RUN) -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_WORKFLOW \
+	-e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CI_NEEDS -e SOURCE_SHA="$$($(GIT) rev-parse HEAD)" \
+	$(TOOLCHAIN_IMAGE) node tools/image-receipt.mjs
+RECEIPT_FILES := tmp/ci/image-receipt.json tmp/ci/image-metadata.json tmp/ci/image-id tmp/ci/image-integration.json
+image-receipt: image-integration ## Require source gates and exact-image integration before writing a receipt
+	$(RECEIPT_RUN) write $(RECEIPT_FILES)
+verify-image-receipt: toolchain ## Inspect the currently loaded tag and verify its exact-image receipt
+	@actual_id="$$(docker image inspect $(IMAGE_TAG) --format '{{.Id}}')" && \
+	  $(RECEIPT_RUN) verify tmp/ci/image-receipt.json tmp/ci/image-metadata.json "$$actual_id" tmp/ci/image-integration.json
 
 .PHONY: poc-bench
 poc-bench: ## Sprint 20: side-by-side latency bench opendb-node vs postgres:16-alpine
@@ -160,8 +252,9 @@ poc-bench-concurrent: ## Phase B prep: multi-client concurrent INSERT+SELECT ben
 	cd $(WORKTREE) && $(NPM) run poc:sentropic:bench-concurrent
 
 .PHONY: poc-musl
-poc-musl: ## Sprint 19.C.1: cargo build --release --target x86_64-unknown-linux-musl (no docker)
-	cd $(WORKTREE) && CC=musl-gcc $(CARGO) build --release --target x86_64-unknown-linux-musl -p opendb-node
+poc-musl: toolchain ## Build the static musl binary in a pinned Rust Alpine image
+	$(DOCKER_RUN) $(MUSL_IMAGE) sh -ec \
+	  'export RUSTUP_TOOLCHAIN="$$(rustup default | cut -d" " -f1)"; exec cargo build --release --target x86_64-unknown-linux-musl -p opendb-node --locked'
 
 .PHONY: smoke-k3s
 smoke-k3s: ## Run the k3s cluster smoke (non-destructive default)
@@ -183,22 +276,22 @@ bench-fk: ## FK insert/delete bench
 
 OPENDB_PGWIRE_PORT ?= 25432
 OPENDB_HEALTH_PORT ?= 28080
-OPENDB_DATA_DIR    ?= $(WORKTREE)/tmp/opendb-local
+OPENDB_DATA_DIR    ?= $(WORKTREE)/tmp/opendb-$(ENV)
+OPENDB_CONTAINER   ?= sentbase-$(ENV)
 
 .PHONY: db-up
-db-up: build ## Spawn a local opendb-node on $(OPENDB_PGWIRE_PORT) (background)
-	@mkdir -p $(OPENDB_DATA_DIR)
-	@pkill -f 'opendb-node.*--pgwire-addr=127.0.0.1:$(OPENDB_PGWIRE_PORT)' 2>/dev/null || true
-	$(NODE_BIN) --node-id 1 \
-	  --data-dir $(OPENDB_DATA_DIR) \
-	  --pgwire-addr 127.0.0.1:$(OPENDB_PGWIRE_PORT) \
-	  --health-addr 127.0.0.1:$(OPENDB_HEALTH_PORT) > $(WORKTREE)/tmp/opendb-local.log 2>&1 &
-	@sleep 1
-	@echo "opendb-node up on pgwire 127.0.0.1:$(OPENDB_PGWIRE_PORT) (logs: $(WORKTREE)/tmp/opendb-local.log)"
+db-up: image db-down ## Spawn the pinned runtime container with explicit ownership and loopback ports
+	@mkdir -p "$(OPENDB_DATA_DIR)"
+	@docker run --rm --user 0 -v "$(OPENDB_DATA_DIR):/var/lib/opendb" --entrypoint sh \
+	  "$$(cat tmp/ci/image-id)" -ec 'chown opendb:opendb /var/lib/opendb'
+	docker run -d --name "$(OPENDB_CONTAINER)" -v "$(OPENDB_DATA_DIR):/var/lib/opendb" \
+	  -p "127.0.0.1:$(OPENDB_PGWIRE_PORT):5432" -p "127.0.0.1:$(OPENDB_HEALTH_PORT):8080" \
+	  "$$(cat tmp/ci/image-id)" --node-id 1
 
 .PHONY: db-down
 db-down: ## Stop the local opendb-node started by db-up
-	@pkill -f 'opendb-node.*--pgwire-addr=127.0.0.1:$(OPENDB_PGWIRE_PORT)' 2>/dev/null && echo "stopped" || echo "no opendb-node running on $(OPENDB_PGWIRE_PORT)"
+	@set -e; found="$$(docker ps -a --filter 'name=^/$(OPENDB_CONTAINER)$$' --format '{{.Names}}')"; \
+	  if [ -n "$$found" ]; then docker rm -f "$(OPENDB_CONTAINER)"; else echo 'No local DB container'; fi
 
 .PHONY: db-reset
 db-reset: db-down ## Stop opendb-node and wipe its data dir
@@ -206,9 +299,12 @@ db-reset: db-down ## Stop opendb-node and wipe its data dir
 	@echo "data dir $(OPENDB_DATA_DIR) cleared"
 
 .PHONY: db-query
-db-query: ## Run a one-shot SQL query against the local opendb-node: SQL="SELECT * FROM t"
-	@if [ -z "$(SQL)" ]; then echo "SQL is required: make db-query SQL=\"SELECT 1\""; exit 1; fi
-	cd $(WORKTREE) && OPENDB_PGWIRE_HOST=127.0.0.1 OPENDB_PGWIRE_PORT=$(OPENDB_PGWIRE_PORT) tsx tools/pgwire-exec.ts "$(SQL)"
+override export SQL := $(value SQL)
+db-query: npm-ci ## Query the local DB through the pinned Node toolchain: SQL="SELECT * FROM t"
+	@test -n "$$SQL" || { echo 'SQL is required'; exit 1; }
+	$(DOCKER_RUN) --network host -e SQL -e OPENDB_PGWIRE_HOST=127.0.0.1 \
+	  -e OPENDB_PGWIRE_PORT=$(OPENDB_PGWIRE_PORT) $(TOOLCHAIN_IMAGE) \
+	  sh -ec 'exec node --import tsx tools/pgwire-exec.ts "$$SQL"'
 
 .PHONY: db-status
 db-status: ## Check whether the local opendb-node is up
@@ -240,9 +336,10 @@ audit-sentropic-verbs: ## Drizzle verb usage histogram in sentropic src/
 	@printf "%-20s %5d\n" "groupBy/agg" "$$(grep -rE '\.groupBy\(|\.having\(|count\(|sum\(|max\(|min\(|avg\(' $(SENTROPIC_ROOT)/src --include='*.ts' 2>/dev/null | wc -l)"
 
 .PHONY: audit-sentropic-grep
+override export PATTERN := $(value PATTERN)
 audit-sentropic-grep: ## Generic grep over sentropic src: PATTERN="..."
-	@if [ -z "$(PATTERN)" ]; then echo "PATTERN is required: make audit-sentropic-grep PATTERN='SELECT'"; exit 1; fi
-	@grep -rE "$(PATTERN)" $(SENTROPIC_ROOT)/src --include='*.ts' 2>/dev/null | head -50
+	@test -n "$$PATTERN" || { echo 'PATTERN is required'; exit 1; }
+	@grep -rE --include='*.ts' -- "$$PATTERN" "$(SENTROPIC_ROOT)/src" | head -50
 
 .PHONY: cloc
 cloc: ## Count lines of code in the opendb workspace
