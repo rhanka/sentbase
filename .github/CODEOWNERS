@@ -1,0 +1,7 @@
+# Governance changes require owner review when code-owner review is enforced.
+/.github/** @rhanka
+/.githooks/** @rhanka
+/tools/check-attribution.sh @rhanka
+/rules/** @rhanka
+/LICENSE @rhanka
+/harness.profile.json @rhanka
