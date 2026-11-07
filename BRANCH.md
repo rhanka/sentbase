@@ -101,6 +101,8 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Argon P1-3 | P1 | fixed | Raw MSG exported; file-based commit, single-line validation, signing disabled for headless commits; quotes/dollars/backticks/backslashes tested. SQL/PATTERN transport corrected with operational targets. |
 | Argon P0-2 | P0 | fixed | Settings allow Make, selective staging and read-only Git; direct toolchains/Python/commit/push/filter-branch and stale paths removed. Attribution-off keys retained. |
 | Astra 8; Argon P0-3 | P2 / P0 | fixed | EX6: MIT in workspace and npm manifests; `make check-license` validates all six packages through containerized Cargo metadata. No dependency/lockfile edit. |
+| Astra 5 (implementation); Argon P0-1 (CI) | P1 / P0 | fixed | Base-revision checker reads commit objects; explicit bootstrap fallback; all-branch push and merge_group triggers; PR metadata checked; CODEOWNERS added. Independent required-workflow enforcement remains an owner acceptance item below. |
+| Argon P2-3 (credentials) | P2 | fixed | Every checkout sets `persist-credentials: false`. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
