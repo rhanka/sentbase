@@ -10,6 +10,18 @@ GIT      := git -C $(WORKTREE)
 NPM      := npm
 NODE_BIN := $(WORKTREE)/target/debug/opendb-node
 
+# Resolved with docker buildx imagetools inspect; rust:bookworm tracks the
+# stable channel in rust-toolchain.toml. Both official images use Bookworm.
+RUST_IMAGE := rust:bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
+NODE_IMAGE := node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40
+export BUILDX_CONFIG := $(WORKTREE)/tmp/toolchain/buildx
+TOOLCHAIN_IMAGE := sentbase-toolchain:v1-$(shell printf '%s' '$(RUST_IMAGE) $(NODE_IMAGE)' | sha256sum | cut -c1-16)
+TOOLCHAIN_RUN = docker run --rm --init --user "$$(id -u):$$(id -g)" \
+	-v "$(WORKTREE):/workspace" -w /workspace -e HOME=/tmp \
+	-e CARGO_HOME=/workspace/tmp/toolchain/target/cargo \
+	-e npm_config_cache=/workspace/tmp/toolchain/npm $(TOOLCHAIN_IMAGE) \
+	sh -ec 'export RUSTUP_TOOLCHAIN="$$(rustup default | cut -d" " -f1)"; exec "$$@"' --
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -29,60 +41,74 @@ help: ## Show available targets
 
 # ----- Build / Test / Lint / Check ------------------------------------------
 
+.PHONY: toolchain npm-ci
+toolchain: ## Build the pinned Rust + Node toolchain (Docker is the only host toolchain)
+	@mkdir -p "$(WORKTREE)/tmp/toolchain/target/cargo" "$(WORKTREE)/tmp/toolchain/npm"
+	@docker image inspect $(TOOLCHAIN_IMAGE) >/dev/null 2>&1 || \
+	printf '%s\n' 'FROM $(NODE_IMAGE) AS node' 'FROM $(RUST_IMAGE)' \
+	  'RUN rustup component add clippy rustfmt' \
+	  'COPY --from=node /usr/local/bin/node /usr/local/bin/node' \
+	  'COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules' \
+	  'RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx' \
+	  | docker build -t $(TOOLCHAIN_IMAGE) -
+
+npm-ci: toolchain ## Install locked Node dependencies, including dev dependencies, in Docker
+	$(TOOLCHAIN_RUN) $(NPM) ci --include=dev
+
 .PHONY: build
-build: ## Build the full Rust workspace
-	cd $(WORKTREE) && $(CARGO) build --workspace
+build: toolchain ## Build the full Rust workspace
+	$(TOOLCHAIN_RUN) $(CARGO) build --workspace --locked
 
 .PHONY: build-release
-build-release: ## Build the Rust workspace in release mode
-	cd $(WORKTREE) && $(CARGO) build --workspace --release
+build-release: toolchain ## Build the Rust workspace in release mode
+	$(TOOLCHAIN_RUN) $(CARGO) build --workspace --release --locked
 
 .PHONY: test
-test: ## Run the full cargo test workspace
-	cd $(WORKTREE) && $(CARGO) test --workspace
+test: toolchain ## Run the full cargo test workspace
+	$(TOOLCHAIN_RUN) $(CARGO) test --workspace --locked
 
 .PHONY: test-storage
-test-storage: ## Run cargo tests for opendb-storage only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-storage
+test-storage: toolchain ## Run cargo tests for opendb-storage only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-storage --locked
 
 .PHONY: test-sql
-test-sql: ## Run cargo tests for opendb-sql only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-sql
+test-sql: toolchain ## Run cargo tests for opendb-sql only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-sql --locked
 
 .PHONY: test-node
-test-node: ## Run cargo tests for opendb-node only
-	cd $(WORKTREE) && $(CARGO) test -p opendb-node
+test-node: toolchain ## Run cargo tests for opendb-node only
+	$(TOOLCHAIN_RUN) $(CARGO) test -p opendb-node --locked
 
 .PHONY: fmt
-fmt: ## Apply rustfmt to the whole workspace
-	cd $(WORKTREE) && $(CARGO) fmt --all
+fmt: toolchain ## Apply rustfmt to the whole workspace
+	$(TOOLCHAIN_RUN) $(CARGO) fmt --all
 
 .PHONY: fmt-check
-fmt-check: ## Verify rustfmt has nothing to change
-	cd $(WORKTREE) && $(CARGO) fmt --all -- --check
+fmt-check: toolchain ## Verify rustfmt has nothing to change
+	$(TOOLCHAIN_RUN) $(CARGO) fmt --all -- --check
 
 .PHONY: clippy
-clippy: ## Run cargo clippy with -D warnings on the workspace
-	cd $(WORKTREE) && $(CARGO) clippy --workspace --all-targets -- -D warnings
+clippy: toolchain ## Run cargo clippy with -D warnings on the workspace
+	$(TOOLCHAIN_RUN) $(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 
 .PHONY: lint
 lint: fmt-check clippy ## fmt-check + clippy
 
 .PHONY: check-ts
-check-ts: ## TypeScript typecheck (npm run check:ts)
-	cd $(WORKTREE) && $(NPM) run check:ts
+check-ts: npm-ci ## TypeScript typecheck (npm run check:ts)
+	$(TOOLCHAIN_RUN) $(NPM) run check:ts
 
 .PHONY: check-no-python
-check-no-python: ## Verify no Python file leaked into the repo
-	cd $(WORKTREE) && $(NPM) run check:no-python
+check-no-python: npm-ci ## Verify no Python file leaked into the repo
+	$(TOOLCHAIN_RUN) $(NPM) run check:no-python
 
 .PHONY: check-manifests
-check-manifests: ## Validate Kubernetes manifests
-	cd $(WORKTREE) && $(NPM) run check:manifests
+check-manifests: npm-ci ## Validate Kubernetes manifests
+	$(TOOLCHAIN_RUN) $(NPM) run check:manifests
 
 .PHONY: vitest
-vitest: ## Run all vitest suites (npm test)
-	cd $(WORKTREE) && $(NPM) test
+vitest: npm-ci build ## Run all vitest suites (npm test), including SQL parity's Cargo subprocess
+	$(TOOLCHAIN_RUN) $(NPM) test
 
 .PHONY: check
 check: lint test check-ts check-no-python check-manifests vitest ## Full check pipeline (lint + tests + npm checks + vitest)

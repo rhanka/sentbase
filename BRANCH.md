@@ -20,6 +20,9 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `rules/**`
   - `plan/**`
   - `tools/check-attribution.sh`
+  - `tools/image-receipt.mjs`
+  - `tools/image-receipt.test.mjs`
+  - `.github/dependabot.yml`
   - `.githooks/**`
   - `.claude/settings.json`
   - `.gitignore`
@@ -39,11 +42,18 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
 ## Feedback Loop
 - `BR01-EX1` Makefile: replace hardcoded worktree path by `$(CURDIR)`; replace `commit`/`ship` (which ran
   `git add -A` and pushed to main) by hook-enforced `commit`, branch-only `push`, `hooks`, `check-attribution`,
-  `scope-check`. Impact: workflow targets only. Rollback: revert the commit.
+  `scope-check`; run quality targets in digest-pinned Rust/Node images with worktree-local caches,
+  and build the musl binary/image plus verify its receipt through Make. Impact: workflow targets only.
+  Rollback: revert the commit.
 - `BR01-EX2` LICENSE: add MIT (owner direction 2026-11-06: full MIT, never any sold license). Impact: the repo
   had no license. Rollback: none intended (license grants are not revocable once published).
-- `BR01-EX3` CI: add a first GitHub Actions workflow (attribution guard, no-python, lint, tests). Rollback: revert.
+- `BR01-EX3` CI: add a first GitHub Actions workflow (attribution guard, no-python, lint, tests, TS,
+  image receipt) and weekly Dependabot updates. Impact: validation only, no publication. Rollback: revert.
 - `BR01-EX4` Track: `track init` for opendb realization state. Rollback: revert.
+- `attention` Lot 2: `make check ENV=test-harness-adopt` fails at Clippy in
+  `crates/opendb-storage/src/wal.rs`: `clippy::type_complexity` at line 175 and
+  `clippy::unnecessary_cast` at lines 911, 965, 1017. Engine changes are forbidden;
+  baseline reproduction is in progress. The other gates pass with `make -k check ENV=test-harness-adopt`.
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
@@ -58,7 +68,8 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - [ ] `harness.profile.json` is declared but the host `harness` CLI only loads built-in profiles (`sentropic|stub`): `make scope-check` runs `--profile sentropic` until custom profiles are supported (request to the harness maintainer).
   - [ ] Lot gate: `make check-attribution` + `make check-no-python` + `make scope-check`.
 - [ ] **Lot 2 — Docker-first toolchain**
-  - [ ] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
+  - [x] `make build|test|lint|check` run in pinned Rust/Node images (digests); host toolchain no longer required.
+  - [x] Branch verified as `chore/harness-adopt` with Git and `harness check branch` before implementation.
   - [ ] Lot gate: `make check` green in containers.
 - [ ] **Lot 3 — CI bootstrap (BR01-EX3)**
   - [ ] Workflow: attribution guard on the PR range, no-python, lint, tests; tested-artifact receipt for the image.
