@@ -105,6 +105,7 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
 | Argon P2-3 (credentials) | P2 | fixed | Every checkout sets `persist-credentials: false`. |
 | Argon P1-1; Astra scope note | P1 | fixed | Containerized harness 0.4.0 API consumes project profile; staged/unstaged/untracked and branch range checked in commit/check/CI. Tests reject absent harness, invalid range and clean-but-out-of-scope branch commits. |
 | Astra 4 (local push); Argon P2-2 (push) | P1 / P2 | fixed | Push requires an outgoing-range attribution scan, rejects detached HEAD/main, uses explicit branch refspec. No push executed. |
+| Astra 6; Argon P1-4 | P2 / P1 | fixed | Verified Alpine digest; exact preinstalled certificate bundle 20260413-r0 avoids mutable repositories entirely. Normalized tar ownership/time; anchored paths; `check-image-inputs` enforces pins. |
 
 ## Plan / Todo (lot-based)
 - [ ] **Lot 0 — Baseline & constraints**
