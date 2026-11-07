@@ -6,8 +6,8 @@ export LC_ALL=C
 # One maintained vocabulary for attribution trailers, prose markers and identities.
 AGENTS='claude|anthropic|openai|chatgpt|codex|copilot|gemini|cursor(agent)?|mistral|vibe|muse|devin|aider|windsurf|codeium|cline|roo|jules|junie|amp|antigravity|sonnet|opus|haiku|gpt-[0-9]+|o[134](-mini|-pro)?|llm|ai[- ]?(assistant|agent)'
 AGENT_RE="(^|[^[:alnum:]])($AGENTS)([^[:alnum:]]|$)"
-TRAILER_RE="^[[:space:]*_>#\140-]*(co-authored-by|generated-by|signed-off-by|assisted-by|authored-by|reviewed-by|suggested-by|helped-by)[[:space:]*_]*:.*($AGENTS)"
-MARKER_RE="(generated|written|created|authored|built)[[:space:]*_\140]+(with|by)[[:space:]*_\140]+[[:space:]*_\140\[]*($AGENTS)([^[:alnum:]]|$)"
+TRAILER_RE="^[[:space:][:punct:]]*(co-authored-by|generated-by|signed-off-by|assisted-by|authored-by|reviewed-by|suggested-by|helped-by)[[:space:]*_]*:([[:space:][:punct:]]*|.*[^[:alnum:]])($AGENTS)([^[:alnum:]]|$)"
+MARKER_RE="(generated|written|created|authored|built)[[:space:][:punct:]]+(with|by)[[:space:][:punct:]]+($AGENTS)([^[:alnum:]]|$)"
 MESSAGE_RE="$TRAILER_RE|$MARKER_RE|claude-session[[:space:]]*:|claude\.com/claude-code|🤖"
 
 die() { echo "attribution-guard: $*" >&2; exit 1; }
