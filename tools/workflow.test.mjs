@@ -14,7 +14,7 @@ for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'MAKEFLAGS', 'M
 const git = (...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trimEnd();
 mkdirSync(join(cwd, 'tools'));
 mkdirSync(join(cwd, '.githooks'));
-for (const path of ['Makefile', 'tools/Dockerfile.pins', 'tools/commit.sh', 'tools/check-attribution.sh', '.githooks/commit-msg']) {
+for (const path of ['Makefile', 'tools/Dockerfile.pins', 'tools/commit.sh', 'tools/hooks-ready.sh', 'tools/check-attribution.sh', '.githooks/commit-msg']) {
   copyFileSync(resolve(path), join(cwd, path));
 }
 git('init', '-q');

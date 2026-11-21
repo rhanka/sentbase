@@ -23,6 +23,8 @@ AI/agent attribution in commits mechanically impossible, after the owner-approve
   - `tools/scope-check.mjs`
   - `tools/workflow.test.mjs`
   - `tools/commit.sh`
+  - `tools/install-hooks.sh`
+  - `tools/hooks-ready.sh`
   - `tools/image-integration.sh`
   - `tools/check-image-inputs.mjs`
   - `tools/no-python.ts`
@@ -169,3 +171,15 @@ Finding IDs below use the reviewer's numbering; outcomes are recorded as each co
   - [ ] `track init`; import this `BRANCH.md`; workpackages from `docs/roadmap` (WP1–WP7).
 - [ ] **Lot N — Final validation**
   - [ ] `make check`; PR body = this `BRANCH.md`; owner sign-off; remove `BRANCH.md` before merge.
+
+## h2a trailer guard (owner request relayed by h-cond, 2026-11-21)
+- `make hooks` runs `tools/install-hooks.sh`: with the machine h2a installer it installs h2a's strip-mode
+  commit-msg guard in `<git-common-dir>/hooks` (worktree- and branch-independent, so the root checkout on
+  `main` is guarded before this PR merges) and chains this repository's stricter `.githooks/commit-msg`
+  through `commit-msg.local`; without the installer it falls back to `core.hooksPath=.githooks`.
+- `tools/commit.sh` requires `tools/hooks-ready.sh` (the repository guard must run) instead of a literal
+  `core.hooksPath=.githooks`.
+- `.github/workflows/no-coauthor-trailer.yml` calls the shared h2a scanner pinned by commit SHA; the stricter
+  `attribution` job in `ci.yml` stays the required check.
+- Verified: trailer stripped, AI marker and AI identity refused, clean message accepted; `make check-ci`,
+  `make test-workflow` (5/5), `make test-attribution` (6/6).

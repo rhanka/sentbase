@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 [ -n "${MSG:-}" ] || { echo 'MSG is required' >&2; exit 1; }
-[ "$(git config core.hooksPath)" = '.githooks' ] || { echo 'Run make hooks first' >&2; exit 1; }
+sh tools/hooks-ready.sh || { echo 'Run make hooks first' >&2; exit 1; }
 if git diff --cached --quiet; then
   echo 'Nothing staged: git add <specific-files> first' >&2; exit 1
 else

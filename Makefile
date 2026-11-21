@@ -141,9 +141,8 @@ status: ## Show git status + recent log
 	$(GIT) log --oneline -10
 
 .PHONY: hooks
-hooks: ## Git: install the repo hooks (core.hooksPath=.githooks, attribution guard)
-	@$(GIT) config core.hooksPath .githooks
-	@echo "hooks: core.hooksPath=.githooks"
+hooks: ## Git: install the commit-msg attribution guards (h2a strip guard chained to .githooks, or .githooks alone)
+	@sh tools/install-hooks.sh
 
 export ATTRIBUTION_RANGE ?= HEAD
 .PHONY: check-attribution
