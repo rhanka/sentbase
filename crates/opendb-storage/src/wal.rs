@@ -172,9 +172,9 @@ impl Wal {
 static WAL_APPEND_LOCKS: OnceLock<std::sync::Mutex<BTreeMap<PathBuf, Weak<Mutex<()>>>>> =
     OnceLock::new();
 
-static WAL_DURABLE_LEN_CACHES: OnceLock<
-    std::sync::Mutex<BTreeMap<PathBuf, Weak<Mutex<Option<u64>>>>>,
-> = OnceLock::new();
+type DurableLenCaches = std::sync::Mutex<BTreeMap<PathBuf, Weak<Mutex<Option<u64>>>>>;
+
+static WAL_DURABLE_LEN_CACHES: OnceLock<DurableLenCaches> = OnceLock::new();
 
 fn append_lock_for_path(path: &PathBuf) -> Arc<Mutex<()>> {
     let locks = WAL_APPEND_LOCKS.get_or_init(|| std::sync::Mutex::new(BTreeMap::new()));
@@ -908,7 +908,7 @@ mod tests {
         let wal_path = temp_dir.path().join("root-range.wal");
         let wal = Wal::new(&wal_path);
         let records: Vec<CommitRecord> = (0..16)
-            .map(|i| insert_record(i + 1, 100 + i as u64, &format!("{i}"), &format!("name{i}")))
+            .map(|i| insert_record(i + 1, 100 + i, &format!("{i}"), &format!("name{i}")))
             .collect();
 
         let mut expected_len = 0u64;
@@ -962,7 +962,7 @@ mod tests {
         let wal_path = temp_dir.path().join("root-range.wal");
         let wal = Wal::new(&wal_path);
         let records: Vec<CommitRecord> = (0..8)
-            .map(|i| insert_record(i + 1, 100 + i as u64, &format!("{i}"), &format!("name{i}")))
+            .map(|i| insert_record(i + 1, 100 + i, &format!("{i}"), &format!("name{i}")))
             .collect();
 
         let expected_len: u64 = records
@@ -1014,7 +1014,7 @@ mod tests {
             .map(|i| {
                 insert_record(
                     10 + i + 1,
-                    200 + i as u64,
+                    200 + i,
                     &format!("{}", 10 + i + 1),
                     &format!("batch{i}"),
                 )

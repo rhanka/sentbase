@@ -1,0 +1,5 @@
+#!/bin/sh
+# Installed by `make hooks`; authoritative CI policy comes from the base revision.
+set -eu
+root=$(git rev-parse --show-toplevel) || exit 1
+exec sh "$root/tools/check-attribution.sh" --message-file "$1"

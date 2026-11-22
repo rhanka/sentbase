@@ -1,0 +1,18 @@
+# Shared h2a scanner for AI attribution in commit messages and PR title/body (owner request, 21/11).
+# Complements the stricter repository job "attribution" in ci.yml (identities, base-revision policy).
+name: no co-author trailer
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    uses: rhanka/h2a/.github/workflows/no-coauthor-trailer.yml@39e833936b2f89458a7b487904dbeaac6f32cce8 # h2a main 2026-11-21
+    with:
+      check-pr-body: true

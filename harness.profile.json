@@ -1,0 +1,17 @@
+{
+  "id": "sentbase",
+  "forbiddenPathDefaults": [
+    "Makefile",
+    "docker-compose*.yml",
+    "Dockerfile*",
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    ".github/workflows/**",
+    ".githooks/**",
+    "tools/check-attribution.sh",
+    "LICENSE"
+  ],
+  "exceptionIdPattern": "^BR\\d+[a-z]?-EX\\d+$",
+  "conditionalRequiresException": true,
+  "branchMatch": "exact"
+}
